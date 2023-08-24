@@ -1,66 +1,14 @@
-#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
-
 #include <iostream>
-#include <random>
-#include <limits>
-#include <algorithm>
-#include <cstdlib>
-#include <cstdint>
-#include <bitset>
+#include <stdint.h>
 
 // Windows only
 #define _CRTDBG_MAP_ALLOC
 #include <stdlib.h>
 #include <crtdbg.h>
 #include <intrin.h>
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
 
-int64_t GetTimerFrequency()
-{
-	LARGE_INTEGER freq = {};
-	QueryPerformanceFrequency(&freq);
-	return freq.QuadPart;
-}
-
-int64_t GetTimestamp()
-{
-	LARGE_INTEGER time = {};
-	QueryPerformanceCounter(&time);
-	return time.QuadPart;
-}
-
-float GetElapsedMS(int64_t start, int64_t end)
-{
-	static int64_t frequency = GetTimerFrequency();
-	float dt = (float)(end - start) / (float)(frequency);
-	return dt * 1000.0f;
-}
-
-#ifdef NDEBUG
-#define MYCRASH() (*((int*)(0)) = 0)
-#else
-#define MYCRASH() __debugbreak()
-#endif
-#define MYASSERT(p) do { if (!(p)) MYCRASH(); } while (0)
-
-#define PRINT_CUDA_ERROR(err) printf("%s(%d) [CUDA]: %s\n", __FILE__, __LINE__, cudaGetErrorString(err))
-#define CHECK_CUDA_CALL(call) do { cudaError_t err = (call); if (err != cudaSuccess) { PRINT_CUDA_ERROR(err); MYASSERT(false); } } while (0)
-
-class RNG
-{
-public:
-	RNG(unsigned seed, uint32_t min, uint32_t max)
-		: m_engine{ seed }
-		, m_distribution(min, max)
-	{}
-public:
-	uint32_t Get() { return m_distribution(m_engine); }
-private:
-	std::default_random_engine m_engine;
-	std::uniform_int_distribution<uint32_t> m_distribution;
-};
+#include "Utils.h"
+#include "CudaUtils.h"
 
 /*
 * Extract the i-th group of r bits from n
@@ -186,47 +134,26 @@ __global__ void BlockPrefixSumKernel(uint32_t* a, uint32_t* block_sums)
 	a[i] = smem[tid];
 }
 
-#define THREADS_COUNT 1024
-#define ELEMS_COUNT 1024
-#define ELEMS_MIN 0
-#define ELEMS_MAX 10
-#define ELEMS_R 4
-
 #define PRINT_TIMINGS
 
-void CheckArrays(uint32_t* a, uint32_t* b, int count)
-{
-	for (int i = 0; i < count; i++)
-	{
-		MYASSERT(a[i] == b[i]);
-	}
-}
-
-void PrintArray(char label, uint32_t* a, int count)
-{
-	#ifdef DEBUG_PRINT
-	std::cout << label << ": ";
-	for (int i = 0; i < count; i++)
-	{
-		std::cout << a[i] << " ";
-	}
-	std::cout << std::endl;
-	#endif
-}
+#define SEQ_RADIX_SORT_TEST_ELEMS_COUNT 16
+#define SEQ_RADIX_SORT_TEST_ELEMS_MIN 0
+#define SEQ_RADIX_SORT_TEST_ELEMS_MAX 10
+#define SEQ_RADIX_SORT_TEST_ELEMS_R 4
 
 void TestSequentialLSDRadixSort()
 {
-	#ifdef DEBUG_PRINT
+	#ifdef PRINT_TIMINGS
 	std::cout << "-- Test sequential LSD radix sort --" << std::endl;
 	#endif
 
-	RNG rng = RNG(0, ELEMS_MIN, ELEMS_MAX);
+	RNG rng = RNG(0, SEQ_RADIX_SORT_TEST_ELEMS_MIN, SEQ_RADIX_SORT_TEST_ELEMS_MAX);
 
-	int count = ELEMS_COUNT;
+	int count = SEQ_RADIX_SORT_TEST_ELEMS_COUNT;
 	uint32_t* a = (uint32_t*)(calloc(count, sizeof(*a)));
 	uint32_t* b = (uint32_t*)(calloc(count, sizeof(*b)));
 	uint32_t* c = (uint32_t*)(calloc(count, sizeof(*c)));
-	int* h = (int*)(calloc(1 << ELEMS_R, sizeof(*h)));
+	int* h = (int*)(calloc(1 << SEQ_RADIX_SORT_TEST_ELEMS_R, sizeof(*h)));
 
 	// populate a and c
 	for (int i = 0; i < count; i++)
@@ -237,13 +164,33 @@ void TestSequentialLSDRadixSort()
 	}
 
 	// sort a writing result in b using LSD radix sort
-	LSDRadixSort(a, b, count, h, ELEMS_R);
+	float lsd_radix_sort_ms = 0;
+	{
+		int64_t start = GetTimestamp();
+		LSDRadixSort(a, b, count, h, SEQ_RADIX_SORT_TEST_ELEMS_R);
+		int64_t end = GetTimestamp();
+		lsd_radix_sort_ms = GetElapsedMS(start, end);
+	}
 
 	// sort c using standard library sort
-	std::sort(c, c + count);
+	float std_sort_ms = 0;
+	{
+		int64_t start = GetTimestamp();
+		std::sort(c, c + count);
+		int64_t end = GetTimestamp();
+		std_sort_ms = GetElapsedMS(start, end);
+	}
 
+	#ifdef PRINT_ARRAY
 	PrintArray('b', b, count);
 	PrintArray('c', c, count);
+	#endif
+
+	#ifdef PRINT_TIMINGS
+	std::cout << "Sequential LSD Radix Sort: " << lsd_radix_sort_ms << " ms" << std::endl;
+	std::cout << "Sequential STD Sort: " << std_sort_ms << " ms" << std::endl;
+	std::cout << "Speedup: x" << std_sort_ms / lsd_radix_sort_ms << std::endl;
+	#endif
 
 	CheckArrays(b, c, count);
 
@@ -253,44 +200,19 @@ void TestSequentialLSDRadixSort()
 	free(a);
 }
 
-void* MyCudaHostAlloc(size_t size, unsigned flags = 0)
-{
-	void* tmp = nullptr;
-	CHECK_CUDA_CALL(cudaHostAlloc(&tmp, size, flags));
-	return tmp;
-}
-
-void* MyCudaMalloc(size_t size)
-{
-	void* tmp = nullptr;
-	CHECK_CUDA_CALL(cudaMalloc(&tmp, size));
-	return tmp;
-}
-
-cudaEvent_t MyCudaEventCreate()
-{
-	cudaEvent_t tmp{};
-	CHECK_CUDA_CALL(cudaEventCreate(&tmp));
-	return tmp;
-}
-
-float MyCudaEventElapsedTime(cudaEvent_t start, cudaEvent_t end)
-{
-	float tmp = 0;
-	CHECK_CUDA_CALL(cudaEventElapsedTime(&tmp, start, end));
-	return tmp;
-}
+#define BLOCK_PREFIX_SUM_TEST_ELEMS_COUNT 1024
+#define BLOCK_PREFIX_SUM_TEST_ELEMS_MIN 0
+#define BLOCK_PREFIX_SUM_TEST_ELEMS_MAX 10
 
 void TestBlockPrefixSumKernel()
 {
-	#ifdef DEBUG_PRINT
+	#ifdef PRINT_TIMINGS
 	std::cout << "-- Test parallel exclusive prefix sum --" << std::endl;
 	#endif
 
-	RNG rng = RNG(0, ELEMS_MIN, ELEMS_MAX);
+	RNG rng = RNG(0, BLOCK_PREFIX_SUM_TEST_ELEMS_MIN, BLOCK_PREFIX_SUM_TEST_ELEMS_MAX);
 
-	int threads = THREADS_COUNT;
-	int count = ELEMS_COUNT;
+	int count = BLOCK_PREFIX_SUM_TEST_ELEMS_COUNT;
 	size_t size = count * sizeof(uint32_t);
 	size_t blocks_size = 1 * sizeof(uint32_t);
 	uint32_t* h_a = (uint32_t*)MyCudaHostAlloc(size);
@@ -310,11 +232,11 @@ void TestBlockPrefixSumKernel()
 	{
 		cudaEvent_t start = MyCudaEventCreate();
 		cudaEvent_t end = MyCudaEventCreate();
-		CHECK_CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
-		CHECK_CUDA_CALL(cudaEventRecord(start));
-		BlockPrefixSumKernel << <1, THREADS_COUNT, size >> > (d_a, d_block_sums);
-		CHECK_CUDA_CALL(cudaEventRecord(end));
-		CHECK_CUDA_CALL(cudaMemcpy(h_b, d_a, size, cudaMemcpyDeviceToHost));
+		CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
+		CUDA_CALL(cudaEventRecord(start));
+		BlockPrefixSumKernel << <1, count, size >> > (d_a, d_block_sums);
+		CUDA_CALL(cudaEventRecord(end));
+		CUDA_CALL(cudaMemcpy(h_b, d_a, size, cudaMemcpyDeviceToHost));
 		parallel_ms = MyCudaEventElapsedTime(start, end);
 	}
 
@@ -326,8 +248,10 @@ void TestBlockPrefixSumKernel()
 		sequential_ms = GetElapsedMS(start, end);
 	}
 
+	#ifdef PRINT_ARRAY
 	PrintArray('a', h_a, count);
 	PrintArray('b', h_b, count);
+	#endif
 
 	#ifdef PRINT_TIMINGS
 	std::cout << "Prefix Sum Sequential: " << sequential_ms << " ms" << std::endl;
@@ -337,16 +261,15 @@ void TestBlockPrefixSumKernel()
 
 	CheckArrays(h_a, h_b, count);
 
-	CHECK_CUDA_CALL(cudaFree(d_block_sums));
-	CHECK_CUDA_CALL(cudaFree(d_a));
-	CHECK_CUDA_CALL(cudaFreeHost(h_b));
-	CHECK_CUDA_CALL(cudaFreeHost(h_a));
+	CUDA_CALL(cudaFree(d_block_sums));
+	CUDA_CALL(cudaFree(d_a));
+	CUDA_CALL(cudaFreeHost(h_b));
+	CUDA_CALL(cudaFreeHost(h_a));
 }
 
 int main()
 {
-	// Windows only
-	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+	CheckForHostLeaks();
 
 	TestSequentialLSDRadixSort();
 	TestBlockPrefixSumKernel();

@@ -88,6 +88,14 @@
   <ItemGroup>
     <CudaCompile Include="LSDRadixSort.cu" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="CudaUtils.h" />
+    <ClInclude Include="Utils.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="CudaUtils.cpp" />
+    <ClCompile Include="Utils.cpp" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 12.0.targets" />
