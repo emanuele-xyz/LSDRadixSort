@@ -10,6 +10,8 @@
 #endif
 #define MYASSERT(p) do { if (!(p)) MYCRASH(); } while (0)
 
+#define MYARRAYCOUNT(a) (sizeof(a) / sizeof(*(a)))
+
 class RNG
 {
 public:
