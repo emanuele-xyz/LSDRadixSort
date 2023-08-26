@@ -138,7 +138,7 @@ __global__ void BlockPrefixSumKernel(uint32_t* a, uint32_t* block_sums)
 
 #define SEQ_RADIX_SORT_TEST_ELEMS_COUNT 16
 #define SEQ_RADIX_SORT_TEST_ELEMS_MIN 0
-#define SEQ_RADIX_SORT_TEST_ELEMS_MAX 10
+#define SEQ_RADIX_SORT_TEST_ELEMS_MAX UINT32_MAX
 #define SEQ_RADIX_SORT_TEST_ELEMS_R 4
 
 void TestSequentialLSDRadixSort()
@@ -369,6 +369,116 @@ void TestGPUPrefixSum(int count, int threads_per_block, int min, int max)
 	CUDA_CALL(cudaFreeHost(h_a));
 }
 
+__device__ void SMEMLSDBinaryRadixSort(uint32_t* a, int tid, int bdim)
+{
+	// 32 passes for 32 bits numbers
+	for (int i = 0; i < 32; i++)
+	{
+		uint32_t val = a[tid];
+		uint32_t bit = GET_R_BITS(val, 1, i);
+		// invert bit and write it to a
+		a[tid] = bit ? 0 : 1;
+		__syncthreads();
+
+		// prefix sum of inverted bits
+		SMEMUpSweep(a, bdim, tid);
+		uint32_t total_falses = a[bdim - 1];
+		if (tid == 0) a[bdim - 1] = 0;
+		__syncthreads();
+		SMEMDownSweep(a, bdim, tid);
+
+		// now a holds the destination for false keys
+		// destination for true key
+		uint32_t t = (uint32_t)tid - a[tid] + total_falses;
+		// destination for val
+		uint32_t d = bit ? t : a[tid];
+		a[d] = val;
+	}
+	__syncthreads();
+}
+
+__global__ void LSDBinaryRadixSortKernel(uint32_t* a)
+{
+	extern __shared__ uint32_t smem[];
+
+	int tid = threadIdx.x;
+
+	// load array in smem
+	smem[tid] = a[tid];
+	__syncthreads();
+
+	SMEMLSDBinaryRadixSort(smem, tid, blockDim.x);
+
+	// write smem into array
+	a[tid] = smem[tid];
+}
+
+#define LSD_BINARY_RADIX_SORT_TEST_ELEMS_COUNT (1024)
+#define LSD_BINARY_RADIX_SORT_TEST_ELEMS_MIN 0
+#define LSD_BINARY_RADIX_SORT_TEST_ELEMS_MAX UINT32_MAX
+
+void TestLSDBinaryRadixSort()
+{
+	#ifdef PRINT_TIMINGS
+	std::cout << "-- Test LSD Binary Radix Sort --" << std::endl;
+	#endif
+
+	RNG rng = RNG(0, LSD_BINARY_RADIX_SORT_TEST_ELEMS_MIN, LSD_BINARY_RADIX_SORT_TEST_ELEMS_MAX);
+
+	// allocate
+	int count = LSD_BINARY_RADIX_SORT_TEST_ELEMS_COUNT;
+	size_t size = count * sizeof(uint32_t);
+	uint32_t* h_a = (uint32_t*)MyCudaHostAlloc(size);
+	uint32_t* h_b = (uint32_t*)MyCudaHostAlloc(size);
+	uint32_t* d_a = (uint32_t*)MyCudaMalloc(size);
+
+	// populate input
+	for (int i = 0; i < count; i++) h_a[i] = rng.Get();
+
+	// parallel lsd binary radix sort
+	float parallel_lsd_binary_radix_sort_ms = 0;
+	{
+		cudaEvent_t start = MyCudaEventCreate();
+		cudaEvent_t end = MyCudaEventCreate();
+
+		CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
+		CUDA_CALL(cudaEventRecord(start));
+		LSDBinaryRadixSortKernel << <1, count, size >> > (d_a);
+		CUDA_CALL(cudaEventRecord(end));
+		CUDA_CALL(cudaMemcpy(h_b, d_a, size, cudaMemcpyDeviceToHost));
+		parallel_lsd_binary_radix_sort_ms = MyCudaEventElapsedTime(start, end);
+	}
+
+	// sequential sort
+	float std_sort_ms = 0;
+	{
+		int64_t start = GetTimestamp();
+		std::sort(h_a, h_a + count);
+		int64_t end = GetTimestamp();
+		std_sort_ms = GetElapsedMS(start, end);
+	}
+
+	// print arrays
+	#ifdef PRINT_ARRAY
+	PrintArray('a', h_a, count);
+	PrintArray('b', h_b, count);
+	#endif
+
+	// print timings
+	#ifdef PRINT_TIMINGS
+	std::cout << "STD Sort: " << std_sort_ms << " ms" << std::endl;
+	std::cout << "Parallel LSD Binary Radix Sort: " << parallel_lsd_binary_radix_sort_ms << " ms" << std::endl;
+	#endif
+
+	// check arrays
+	CheckArrays(h_a, h_b, count);
+
+	// deallocate
+	CUDA_CALL(cudaFree(d_a));
+	CUDA_CALL(cudaFreeHost(h_b));
+	CUDA_CALL(cudaFreeHost(h_a));
+}
+
 void BenchmarkGPUPrefixSum()
 {
 	int count[] =
@@ -410,6 +520,7 @@ int main()
 	TestSequentialLSDRadixSort();
 	TestBlockPrefixSumKernel();
 	TestGPUPrefixSum(PREFIX_SUM_TEST_ELEMS_COUNT, PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK, PREFIX_SUM_TEST_ELEMS_MIN, PREFIX_SUM_TEST_ELEMS_MAX);
+	TestLSDBinaryRadixSort();
 
 	return 0;
 }
