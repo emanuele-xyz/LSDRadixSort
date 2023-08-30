@@ -1,6 +1,10 @@
 #include <iostream>
 #include <stdint.h>
 
+/*
+	TODO: watch this https://www.youtube.com/watch?v=fsC3QeZHM1U
+*/
+
 // Windows only
 #define _CRTDBG_MAP_ALLOC
 #include <stdlib.h>
@@ -232,6 +236,8 @@ void TestBlockPrefixSumKernel()
 		CUDA_CALL(cudaEventRecord(end));
 		CUDA_CALL(cudaMemcpy(h_b, d_a, size, cudaMemcpyDeviceToHost));
 		parallel_ms = MyCudaEventElapsedTime(start, end);
+		CUDA_CALL(cudaEventDestroy(end));
+		CUDA_CALL(cudaEventDestroy(start));
 	}
 
 	float sequential_ms = 0;
@@ -326,13 +332,14 @@ void TestGPUPrefixSum(int count, int threads_per_block, int min, int max)
 	{
 		cudaEvent_t start = MyCudaEventCreate();
 		cudaEvent_t end = MyCudaEventCreate();
-
 		CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
 		CUDA_CALL(cudaEventRecord(start));
 		GPUPrefixSum(d_a, count, threads_per_block, d_block_sums);
 		CUDA_CALL(cudaEventRecord(end));
 		CUDA_CALL(cudaMemcpy(h_b, d_a, size, cudaMemcpyDeviceToHost));
 		parallel_ms = MyCudaEventElapsedTime(start, end);
+		CUDA_CALL(cudaEventDestroy(end));
+		CUDA_CALL(cudaEventDestroy(start));
 	}
 
 	// sequential prefix sum
@@ -440,13 +447,14 @@ void TestLSDBinaryRadixSort()
 	{
 		cudaEvent_t start = MyCudaEventCreate();
 		cudaEvent_t end = MyCudaEventCreate();
-
 		CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
 		CUDA_CALL(cudaEventRecord(start));
 		LSDBinaryRadixSortKernel << <1, count, size >> > (d_a);
 		CUDA_CALL(cudaEventRecord(end));
 		CUDA_CALL(cudaMemcpy(h_b, d_a, size, cudaMemcpyDeviceToHost));
 		parallel_lsd_binary_radix_sort_ms = MyCudaEventElapsedTime(start, end);
+		CUDA_CALL(cudaEventDestroy(end));
+		CUDA_CALL(cudaEventDestroy(start));
 	}
 
 	// sequential sort
@@ -477,6 +485,166 @@ void TestLSDBinaryRadixSort()
 	CUDA_CALL(cudaFree(d_a));
 	CUDA_CALL(cudaFreeHost(h_b));
 	CUDA_CALL(cudaFreeHost(h_a));
+}
+
+/*
+	a: m x n matrix
+	b: n x m matrix
+*/
+void Transpose(uint32_t* a, uint32_t* b, int m, int n)
+{
+	for (int row = 0; row < m; row++)
+	{
+		for (int col = 0; col < n; col++)
+		{
+			int a_i = row * n + col;
+			int b_i = col * m + row;
+			b[b_i] = a[a_i];
+		}
+	}
+}
+
+/*
+	a : m x n matrix
+	b : n x m matrix
+*/
+__global__ void TransposeNaiveKernel(uint32_t* a, uint32_t* b, int m, int n)
+{
+	int j = blockIdx.x * blockDim.x + threadIdx.x;
+	int i = blockIdx.y * blockDim.y + threadIdx.y;
+	if (i >= m || j >= n) return;
+	b[j * m + i] = a[i * n + j];
+}
+
+/*
+	a : m x n matrix
+	b : n x m matrix
+*/
+__global__ void TransposeSMEMKernel(uint32_t* a, uint32_t* b, int m, int n)
+{
+	extern __shared__ uint32_t smem[];
+
+	int t_i = threadIdx.y;
+	int t_j = threadIdx.x;
+	int t_cols = blockDim.x;
+	int t_rows = blockDim.y;
+	int a_i = blockIdx.y * blockDim.y + t_i;
+	int a_j = blockIdx.x * blockDim.x + t_j;
+	int b_i = blockIdx.x * blockDim.x + t_i;
+	int b_j = blockIdx.y * blockDim.y + t_j;
+
+	// copy matrix block into smem
+	if (a_i < m && a_j < n)
+	{
+		smem[t_i * t_cols + t_j] = a[a_i * n + a_j];
+	}
+	__syncthreads();
+
+	// write transposed smem block
+	if (b_i < n && b_j < m)
+	{
+		b[b_i * m + b_j] = smem[t_j * t_rows + t_i];
+	}
+}
+
+#define TRANSPOSE_TEST_M (1024)
+#define TRANSPOSE_TEST_N (1024)
+#define TRANSPOSE_TEST_BLOCK_DIM 32
+#define TRANSPOSE_TEST_MIN_ELEM 0
+#define TRANSPOSE_TEST_MAX_ELEM 9
+
+void TestTranspose()
+{
+	#ifdef PRINT_TIMINGS
+	std::cout << "-- Test Transpose --" << std::endl;
+	#endif
+
+	RNG rng = RNG(0, TRANSPOSE_TEST_MIN_ELEM, TRANSPOSE_TEST_MAX_ELEM);
+
+	// allocate
+	int m = TRANSPOSE_TEST_M;
+	int n = TRANSPOSE_TEST_N;
+	int count = m * n;
+	int block_dim = TRANSPOSE_TEST_BLOCK_DIM;
+	size_t size = count * sizeof(uint32_t);
+	uint32_t* h_a = (uint32_t*)MyCudaHostAlloc(size);
+	uint32_t* h_b = (uint32_t*)MyCudaHostAlloc(size);
+	uint32_t* h_c = (uint32_t*)MyCudaHostAlloc(size);
+	uint32_t* d_a = (uint32_t*)MyCudaMalloc(size);
+	uint32_t* d_b = (uint32_t*)MyCudaMalloc(size);
+
+	#ifdef PRINT_TIMINGS
+	std::cout << "Transpose of " << (double)(size) / (1024.0 * 1024.0 * 1024.0) << " GB of data" << std::endl;
+	#endif
+
+	// populate input
+	for (int i = 0; i < count; i++) h_a[i] = rng.Get();
+
+	// sequential transpose
+	float sequential_ms = 0.0f;
+	{
+		int64_t start = GetTimestamp();
+		Transpose(h_a, h_b, m, n);
+		int64_t end = GetTimestamp();
+		sequential_ms = GetElapsedMS(start, end);
+	}
+
+	float gpu_naive_ms = 0.0f;
+	{
+		cudaEvent_t start = MyCudaEventCreate();
+		cudaEvent_t end = MyCudaEventCreate();
+		CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
+		CUDA_CALL(cudaEventRecord(start));
+		dim3 block(block_dim, block_dim);
+		dim3 grid((n + block_dim - 1) / block_dim, (m + block_dim - 1) / block_dim);
+		TransposeNaiveKernel << <grid, block >> > (d_a, d_b, m, n);
+		CUDA_CALL(cudaEventRecord(end));
+		CUDA_CALL(cudaMemcpy(h_c, d_b, size, cudaMemcpyDeviceToHost));
+		gpu_naive_ms = MyCudaEventElapsedTime(start, end);
+		CUDA_CALL(cudaEventDestroy(end));
+		CUDA_CALL(cudaEventDestroy(start));
+	}
+
+	// print timings
+	#ifdef PRINT_TIMINGS
+	std::cout << "Sqeuential Transpose: " << sequential_ms << " ms" << std::endl;
+	std::cout << "GPU Naive Transpose: " << gpu_naive_ms << " ms - Speedup: x" << sequential_ms / gpu_naive_ms << std::endl;
+	#endif
+
+	// check matrices
+	CheckArrays(h_b, h_c, count);
+
+	float gpu_smem_ms = 0.0f;
+	{
+		cudaEvent_t start = MyCudaEventCreate();
+		cudaEvent_t end = MyCudaEventCreate();
+		CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
+		CUDA_CALL(cudaEventRecord(start));
+		dim3 block(block_dim, block_dim);
+		dim3 grid((n + block_dim - 1) / block_dim, (m + block_dim - 1) / block_dim);
+		size_t smem = block_dim * block_dim * sizeof(uint32_t);
+		TransposeSMEMKernel << <grid, block, smem >> > (d_a, d_b, m, n);
+		CUDA_CALL(cudaEventRecord(end));
+		CUDA_CALL(cudaMemcpy(h_c, d_b, size, cudaMemcpyDeviceToHost));
+		gpu_smem_ms = MyCudaEventElapsedTime(start, end);
+		CUDA_CALL(cudaEventDestroy(end));
+		CUDA_CALL(cudaEventDestroy(start));
+	}
+
+	// print timings
+	#ifdef PRINT_TIMINGS
+	std::cout << "GPU SMEM Transpose: " << gpu_smem_ms << " ms - Speedup: x" << sequential_ms / gpu_smem_ms << std::endl;
+	#endif
+
+	// check matrices
+	CheckArrays(h_b, h_c, count);
+
+	// deallocate
+	cudaFree(d_b);
+	cudaFree(d_a);
+	cudaFreeHost(h_c);
+	cudaFreeHost(h_b);
+	cudaFreeHost(h_a);
 }
 
 void BenchmarkGPUPrefixSum()
@@ -521,6 +689,7 @@ int main()
 	TestBlockPrefixSumKernel();
 	TestGPUPrefixSum(PREFIX_SUM_TEST_ELEMS_COUNT, PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK, PREFIX_SUM_TEST_ELEMS_MIN, PREFIX_SUM_TEST_ELEMS_MAX);
 	TestLSDBinaryRadixSort();
+	TestTranspose();
 
 	return 0;
 }

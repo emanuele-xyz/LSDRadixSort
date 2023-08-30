@@ -53,3 +53,15 @@ void PrintArray(char label, uint32_t* a, int count)
 	}
 	std::cout << std::endl;
 }
+
+void PrintMatrix(uint32_t* a, int m, int n)
+{
+	for (int row = 0; row < m; row++)
+	{
+		for (int col = 0; col < n; col++)
+		{
+			std::cout << a[row * n + col] << " ";
+		}
+		std::cout << std::endl;
+	}
+}
