@@ -25,7 +25,7 @@
 * count: number of elements to sort
 * r:     number of bits to consider as keys (any factor of 32 apart from itself)
 */
-void LSDRadixSort(uint32_t* in, uint32_t* out, int count, int* histogram, int r)
+void LSDRadixSort(uint32_t* in, uint32_t* out, int count, uint32_t* histogram, int r)
 {
 	int iterations = (sizeof(*in) * 8) / r;
 	for (int i = 0; i < iterations; i++)
@@ -157,7 +157,7 @@ void TestSequentialLSDRadixSort()
 	uint32_t* a = (uint32_t*)(calloc(count, sizeof(*a)));
 	uint32_t* b = (uint32_t*)(calloc(count, sizeof(*b)));
 	uint32_t* c = (uint32_t*)(calloc(count, sizeof(*c)));
-	int* h = (int*)(calloc(1 << SEQ_RADIX_SORT_TEST_ELEMS_R, sizeof(*h)));
+	uint32_t* h = (uint32_t*)(calloc(1 << SEQ_RADIX_SORT_TEST_ELEMS_R, sizeof(*h)));
 
 	// populate a and c
 	for (int i = 0; i < count; i++)
@@ -647,6 +647,344 @@ void TestTranspose()
 	cudaFreeHost(h_a);
 }
 
+/*
+	bdim: 64   r: 1  lct: 2     ratio: 0.03125
+	bdim: 64   r: 2  lct: 4     ratio: 0.0625
+	bdim: 64   r: 4  lct: 16    ratio: 0.25
+	bdim: 64   r: 8  lct: 256   ratio: 4
+	bdim: 64   r: 16 lct: 65536 ratio: 1024
+
+	bdim: 128  r: 1  lct: 2	    ratio: 0.015625
+	bdim: 128  r: 2  lct: 4	    ratio: 0.03125
+	bdim: 128  r: 4  lct: 16    ratio: 0.125
+	bdim: 128  r: 8  lct: 256   ratio: 2
+	bdim: 128  r: 16 lct: 65536 ratio: 512
+
+	bdim: 256  r: 1  lct: 2	    ratio: 0.0078125
+	bdim: 256  r: 2  lct: 4	    ratio: 0.015625
+	bdim: 256  r: 4  lct: 16    ratio: 0.0625
+	bdim: 256  r: 8  lct: 256   ratio: 1
+	bdim: 256  r: 16 lct: 65536 ratio: 256
+
+	bdim: 512  r: 1  lct: 2     ratio: 0.00390625
+	bdim: 512  r: 2  lct: 4     ratio: 0.0078125
+	bdim: 512  r: 4  lct: 16    ratio: 0.03125
+	bdim: 512  r: 8  lct: 256   ratio: 0.5
+	bdim: 512  r: 16 lct: 65536 ratio: 128
+
+	bdim: 1024 r: 1  lct: 2     ratio: 001953125
+	bdim: 1024 r: 2  lct: 4     ratio: 0.00390625
+	bdim: 1024 r: 4  lct: 16    ratio: 0.015625
+	bdim: 1024 r: 8  lct: 256   ratio: 0.25
+	bdim: 1024 r: 16 lct: 65536 ratio: 64
+*/
+
+/*
+	grid:  how many histograms
+	block: how many array elements per histogram
+*/
+void BuildHistogramsCPU(uint32_t* a, uint32_t* h, int count, int r, int bit_group, int grid, int block)
+{
+	int h_count = (1 << r);
+
+	for (int g = 0; g < grid; g++)
+	{
+		for (int b = 0; b < block; b++)
+		{
+			int a_i = g * block + b;
+			uint32_t val = a[a_i];
+			int key = GET_R_BITS(val, r, bit_group);
+			int h_i = g * h_count + key;
+			h[h_i] += 1;
+		}
+	}
+}
+
+__global__ void BuildHistogramsKernel(uint32_t* a, uint32_t* h, int count, int r, int bit_group)
+{
+	extern __shared__ uint32_t smem[];
+
+	int bdim = blockDim.x;
+	int tid = threadIdx.x;
+	int bid = blockIdx.x;
+	int idx = bid * bdim + tid;
+
+	// zero initialize smem
+	int lct_count = 1 << r;
+	float cells_per_thread_ratio = (float)(lct_count) / (float)(bdim);
+	int cells_per_thread = cells_per_thread_ratio < 1.0f ? 1 : (int)(cells_per_thread_ratio + 0.5f);
+	for (int i = 0; i < cells_per_thread; i++)
+	{
+		int smem_i = tid * cells_per_thread + i;
+		if (smem_i < lct_count)
+		{
+			smem[smem_i] = 0;
+		}
+	}
+	__syncthreads();
+
+	// build histogram in smem
+	if (idx < count)
+	{
+		uint32_t val = a[idx];
+		int key = GET_R_BITS(val, r, bit_group);
+		atomicInc(&smem[key], UINT32_MAX);
+	}
+	__syncthreads();
+
+	// write histogram to global memory
+	for (int i = 0; i < cells_per_thread; i++)
+	{
+		int smem_i = tid * cells_per_thread + i;
+		int h_i = bid * lct_count + smem_i;
+		if (smem_i < lct_count)
+		{
+			h[h_i] = smem[smem_i];
+		}
+	}
+}
+
+void TestBuildHistogram(int count, int block, int r, int bit_group, int min, int max)
+{
+	#ifdef PRINT_TIMINGS
+	std::cout << "-- Test Build Histogram --" << std::endl;
+	#endif
+
+	int grid = (count + block - 1) / block;
+	size_t h_count = (1 << r);
+	size_t h_total_count = h_count * grid;
+
+	// get sizes
+	size_t size = count * sizeof(uint32_t);
+	size_t h_total_size = h_total_count * sizeof(uint32_t);
+
+	#ifdef PRINT_TIMINGS
+	std::cout << "Elements: " << (double)(size) / (1024.0 * 1024.0 * 1024.0) << " GB" << std::endl;
+	std::cout << "Histograms: " << (double)(h_total_size) / (1024.0 * 1024.0 * 1024.0) << " GB" << std::endl;
+	std::cout << "Block Size: " << block << std::endl;
+	std::cout << "R: " << r << std::endl;
+	std::cout << "Bit Group: " << bit_group << std::endl;
+	#endif
+
+	if (h_total_size > size)
+	{
+		#ifdef PRINT_TIMINGS
+		std::cout << "SKIP: histogram is bigger than input" << std::endl;
+		#endif
+		return;
+	}
+
+	// allocate
+	uint32_t* h_a = (uint32_t*)MyCudaHostAlloc(size);
+	uint32_t* h_h1 = (uint32_t*)MyCudaHostAlloc(h_total_size);
+	uint32_t* h_h2 = (uint32_t*)MyCudaHostAlloc(h_total_size);
+	uint32_t* d_a = (uint32_t*)MyCudaMalloc(size);
+	uint32_t* d_h = (uint32_t*)MyCudaMalloc(h_total_size);
+
+	// populate input
+	RNG rng = RNG(0, min, max);
+	for (int i = 0; i < count; i++) h_a[i] = rng.Get();
+
+	// cpu implementation
+	float cpu_ms = 0.0f;
+	{
+		int64_t start = GetTimestamp();
+		BuildHistogramsCPU(h_a, h_h1, count, r, bit_group, grid, block);
+		int64_t end = GetTimestamp();
+		cpu_ms = GetElapsedMS(start, end);
+	}
+
+	// print timings
+	#ifdef PRINT_TIMINGS
+	std::cout << "CPU " << cpu_ms << " ms" << std::endl;
+	#endif
+
+	// gpu implementation
+	float gpu_ms = 0.0f;
+	{
+		cudaEvent_t start = MyCudaEventCreate();
+		cudaEvent_t end = MyCudaEventCreate();
+		CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
+		CUDA_CALL(cudaEventRecord(start));
+		size_t smem = h_count * sizeof(uint32_t);
+		BuildHistogramsKernel << <grid, block, smem >> > (d_a, d_h, count, r, bit_group);
+		CUDA_CALL(cudaEventRecord(end));
+		CUDA_CALL(cudaMemcpy(h_h2, d_h, h_total_size, cudaMemcpyDeviceToHost));
+		gpu_ms = MyCudaEventElapsedTime(start, end);
+		CUDA_CALL(cudaEventDestroy(end));
+		CUDA_CALL(cudaEventDestroy(start));
+	}
+
+	// print timings
+	#ifdef PRINT_TIMINGS
+	std::cout << "GPU " << gpu_ms << " ms - Speedup: x" << cpu_ms / gpu_ms << std::endl;
+	#endif
+
+	// check arrays
+	CheckArrays(h_h1, h_h2, h_total_count);
+
+	// deallocate
+	CUDA_CALL(cudaFree(d_h));
+	CUDA_CALL(cudaFree(d_a));
+	CUDA_CALL(cudaFreeHost(h_h2));
+	CUDA_CALL(cudaFreeHost(h_h1));
+	CUDA_CALL(cudaFreeHost(h_a));
+}
+
+void BenchmarkBuildHistogram()
+{
+	int counts[] =
+	{
+		1024 * 1024 * 64,
+		1024 * 1024 * 128,
+		1024 * 1024 * 256,
+		1024 * 1024 * 512,
+		1024 * 1024 * 1024,
+	};
+
+	int blocks[] =
+	{
+		64,
+		128,
+		256,
+		512,
+		1024,
+	};
+
+	int rs[] =
+	{
+		1,
+		2,
+		4,
+		8,
+		16,
+	};
+
+	for (int c_i = 0; c_i < MYARRAYCOUNT(counts); c_i++)
+	{
+		for (int b_i = 0; b_i < MYARRAYCOUNT(blocks); b_i++)
+		{
+			for (int r_i = 0; r_i < MYARRAYCOUNT(rs); r_i++)
+			{
+				RNG rng = RNG(0, 0, (32 / rs[r_i]));
+				TestBuildHistogram(counts[c_i], blocks[b_i], rs[r_i], rng.Get(), 0, UINT32_MAX);
+			}
+		}
+	}
+}
+
+#define LSD_RADIX_SORT_TEST_ELEMS_COUNT (1024 * 2)
+#define LSD_RADIX_SORT_TEST_BLOCK_DIM (1024)
+#define LSD_RADIX_SORT_TEST_MIN 0
+#define LSD_RADIX_SORT_TEST_MAX UINT32_MAX
+#define LSD_RADIX_SORT_TEST_R 4
+
+void TestLSDRadixSort()
+{
+	#if 0
+	#ifdef PRINT_TIMINGS
+	std::cout << "-- Test LSD Radix Sort --" << std::endl;
+	#endif
+
+	RNG rng = RNG(0, LSD_RADIX_SORT_TEST_MIN, LSD_RADIX_SORT_TEST_MAX);
+
+	// allocate
+	int block_dim = LSD_RADIX_SORT_TEST_BLOCK_DIM;
+	int r = LSD_RADIX_SORT_TEST_R;
+	int count = LSD_RADIX_SORT_TEST_ELEMS_COUNT;
+	dim3 block(block_dim);
+	dim3 grid((count + block_dim - 1) / block_dim);
+	int histogram_count = (1 << r);
+	size_t histogram_size = histogram_count * grid.x * sizeof(uint32_t);
+	size_t size = count * sizeof(uint32_t);
+	uint32_t* h_a = (uint32_t*)MyCudaHostAlloc(size);
+	uint32_t* h_b = (uint32_t*)MyCudaHostAlloc(size);
+	uint32_t* h_c = (uint32_t*)MyCudaHostAlloc(size);
+	uint32_t* d_a = (uint32_t*)MyCudaMalloc(size);
+	uint32_t* d_b = (uint32_t*)MyCudaMalloc(size);
+	uint32_t* d_histogram = (uint32_t*)MyCudaMalloc(histogram_size);
+	uint32_t* histogram = (uint32_t*)calloc(1 << r, sizeof(*histogram));
+
+	#ifdef PRINT_TIMINGS
+	std::cout << "Sorting " << (double)(size) / (1024.0 * 1024.0 * 1024.0) << " GB of data" << std::endl;
+	#endif
+
+	// populate input
+	for (int i = 0; i < count; i++) h_a[i] = rng.Get();
+
+	float cpu_ms = 0.0f;
+	{
+		int64_t start = GetTimestamp();
+		LSDRadixSort(h_a, h_b, count, histogram, r);
+		int64_t end = GetTimestamp();
+		cpu_ms = GetElapsedMS(start, end);
+	}
+
+	// print timings
+	#ifdef PRINT_TIMINGS
+	std::cout << "CPU LSD Radix Sort (" << r << " bits keys): " << cpu_ms << " ms" << std::endl;
+	#endif
+
+	float gpu_ms = 0.0f;
+	{
+		cudaEvent_t start = MyCudaEventCreate();
+		cudaEvent_t end = MyCudaEventCreate();
+		CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
+		CUDA_CALL(cudaEventRecord(start));
+		{
+			// 1) Count
+			// TODO: initialize smem to zero. 
+			// Here smem is used as an histogram. The number of cells in the histogram
+			// If histogram is smaller than the block, then some threads won't do any zero initialization
+			// If histogram is as big as the block, then each thread will initialize one histogram cell
+			// If histogram is bigger than the block, then each thread will initialize one or more histogram cells
+			// TODO: build histogram using atomic operations on smem
+
+			// 2) Exclusive Prefix Sum
+			// TODO: Compute prefix sum on each block local histogram. This computes the block local offsets
+			// TODO: Compute prefix sum on the global histogram, stored in column major order. This computes the global offsets
+			// For starters, we write to global memory each block local histogram
+			// Then we copy the histogram to another chunk of global memory
+			// We perform a block local prefix sum on each histogram in the first chunk of global memory
+			// We transpose the second chunk of global memory
+			// We perform a prefix sum on the entire second chunk of global memory
+			// We transpose again the second chunk of global memory
+			// The two prefix sums, can be done on different streams, to help with parallelism
+
+			// 3) Sort
+			// TODO: Sort the elements by block, using smem and LSDBinaryRadixSort
+			// TODO: Build a destination table using local and global offsets (random access, use SMEM for there tables)
+			// Here we require a four times the SMEM. Elements + local offsets + global offsets + destination table
+			// TODO: Reorder elements using destination table
+
+			size_t smem = (1 << r) * sizeof(uint32_t);
+			BuildHistogramKernel << <grid, block, smem >> > (d_a, count, d_histogram, r, 0);
+		}
+		CUDA_CALL(cudaEventRecord(end));
+		CUDA_CALL(cudaMemcpy(h_c, d_b, size, cudaMemcpyDeviceToHost));
+		gpu_ms = MyCudaEventElapsedTime(start, end);
+		CUDA_CALL(cudaEventDestroy(end));
+		CUDA_CALL(cudaEventDestroy(start));
+	}
+
+	// print timings
+	#ifdef PRINT_TIMINGS
+	std::cout << "GPU LSD Radix Sort (" << r << " bits keys): " << gpu_ms << " ms - Speedup: x" << cpu_ms / gpu_ms << std::endl;
+	#endif
+
+	// TODO: check arrays
+	//CheckArrays(h_b, h_c, count);
+
+	// deallocate
+	free(histogram);
+	CUDA_CALL(cudaFree(d_b));
+	CUDA_CALL(cudaFree(d_a));
+	CUDA_CALL(cudaFreeHost(h_c));
+	CUDA_CALL(cudaFreeHost(h_b));
+	CUDA_CALL(cudaFreeHost(h_a));
+	#endif
+}
+
 void BenchmarkGPUPrefixSum()
 {
 	int count[] =
@@ -681,15 +1019,28 @@ void BenchmarkGPUPrefixSum()
 #define PREFIX_SUM_TEST_ELEMS_MIN 0
 #define PREFIX_SUM_TEST_ELEMS_MAX 10
 
+#define BUILD_HISTOGRAM_TEST_ELEMS_COUNT (1024 * 1024)
+#define BUILD_HISTOGRAM_TEST_BLOCK_DIM (256)
+#define BUILD_HISTOGRAM_TEST_MIN 0
+#define BUILD_HISTOGRAM_TEST_MAX 10
+#define BUILD_HISTOGRAM_TEST_BIT_GROUP 0
+#define BUILD_HISTOGRAM_TEST_R 4
+
 int main()
 {
 	CheckForHostLeaks();
 
+	#ifdef BENCHMARK_BUILD_HISTOGRAMS
+	BenchmarkBuildHistogram();
+	#else
 	TestSequentialLSDRadixSort();
 	TestBlockPrefixSumKernel();
 	TestGPUPrefixSum(PREFIX_SUM_TEST_ELEMS_COUNT, PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK, PREFIX_SUM_TEST_ELEMS_MIN, PREFIX_SUM_TEST_ELEMS_MAX);
 	TestLSDBinaryRadixSort();
 	TestTranspose();
+	TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
+	TestLSDRadixSort();
+	#endif
 
 	return 0;
 }

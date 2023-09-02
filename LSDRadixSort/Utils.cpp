@@ -36,9 +36,9 @@ float GetElapsedMS(int64_t start, int64_t end)
 	return dt * 1000.0f;
 }
 
-void CheckArrays(uint32_t* a, uint32_t* b, int count)
+void CheckArrays(uint32_t* a, uint32_t* b, size_t count)
 {
-	for (int i = 0; i < count; i++)
+	for (size_t i = 0; i < count; i++)
 	{
 		MYASSERT(a[i] == b[i]);
 	}

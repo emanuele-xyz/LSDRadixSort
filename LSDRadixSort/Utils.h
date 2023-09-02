@@ -27,6 +27,6 @@ void CheckForHostLeaks();
 int64_t GetTimerFrequency();
 int64_t GetTimestamp();
 float GetElapsedMS(int64_t start, int64_t end);
-void CheckArrays(uint32_t* a, uint32_t* b, int count);
+void CheckArrays(uint32_t* a, uint32_t* b, size_t count);
 void PrintArray(char label, uint32_t* a, int count);
 void PrintMatrix(uint32_t* a, int m, int n);
