@@ -1123,8 +1123,22 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, uint32_t* d
 
 			// Build destination table
 			BuildDestinationTableKernel << <grid, block >> > (a, local_offsets, global_offsets, d, count, r, bit_group);
-			#ifdef LSD_RADIX_SORT_DBG_PRINT
+			#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
 			CUDA_CALL(cudaMemcpy(tmp_d, d, count * sizeof(uint32_t), cudaMemcpyDeviceToHost));
+			#endif
+			#if defined(LSD_RADIX_SORT_VALIDATE)
+			for (int i = 0; i < count; i++)
+			{
+				int bid = i / block;
+				int tid = i % block;
+
+				uint32_t val = tmp_a[i];
+				int key = GET_R_BITS(val, r, bit_group);
+				tmp_d0[i] = (uint32_t)((int64_t)tid - (int64_t)(tmp_l[bid * h_count + key]) + (int64_t)(tmp_g[bid * h_count + key]));
+			}
+			CheckArrays(tmp_d0, tmp_d, count);
+			#endif
+			#if defined(LSD_RADIX_SORT_DBG_PRINT)
 			PrintArray('d', tmp_d, count);
 			#endif
 
@@ -1156,7 +1170,7 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, uint32_t* d
 	a: 4 4 8 0 5 5 5 5 6 2 7 7 7 3 3 3
 */
 
-#define GPU_LSD_SORT_TEST_COUNT (1024 * 16)
+#define GPU_LSD_SORT_TEST_COUNT (16)
 #define GPU_LSD_SORT_TEST_BLOCK_DIM (4)
 #define GPU_LSD_SORT_TEST_R (2)
 #define GPU_LSD_SORT_TEST_MIN 0
@@ -1333,12 +1347,12 @@ int main()
 	#ifdef BENCHMARK_BUILD_HISTOGRAMS
 	BenchmarkBuildHistogram();
 	#else
-	//TestSequentialLSDRadixSort();
-	//TestBlockPrefixSumKernel();
-	//TestGPUPrefixSum(PREFIX_SUM_TEST_ELEMS_COUNT, PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK, PREFIX_SUM_TEST_ELEMS_MIN, PREFIX_SUM_TEST_ELEMS_MAX);
-	//TestLSDBinaryRadixSort();
-	//TestTranspose();
-	//TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
+	TestSequentialLSDRadixSort();
+	TestBlockPrefixSumKernel();
+	TestGPUPrefixSum(PREFIX_SUM_TEST_ELEMS_COUNT, PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK, PREFIX_SUM_TEST_ELEMS_MIN, PREFIX_SUM_TEST_ELEMS_MAX);
+	TestLSDBinaryRadixSort();
+	TestTranspose();
+	TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
 	//TestBuildDestinationTable();
 	TestGPULSDRadixSort();
 	#endif
