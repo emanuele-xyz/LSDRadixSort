@@ -853,6 +853,28 @@ void BenchmarkBuildHistogram()
 	}
 }
 
+#define GPU_LSD_SORT_TEST_COUNT (16)
+#define GPU_LSD_SORT_TEST_BLOCK_DIM (4)
+#define GPU_LSD_SORT_TEST_R (2)
+#define GPU_LSD_SORT_TEST_MIN 0
+#define GPU_LSD_SORT_TEST_MAX 10
+
+void TestBuildDestinationTable()
+{
+	#ifdef PRINT_TIMINGS
+	std::cout << "-- Test Build Destination Table --" << std::endl;
+	#endif
+
+	// TODO: compute sizes
+	// TODO: allocate
+	// TODO: cpu
+	// TODO: print timinngs
+	// TODO: gpu
+	// TODO: print timings
+	// TODO: check arrays
+	// TODO: deallocate
+}
+
 /*
 	a: input array
 	l: local offsets
@@ -1150,7 +1172,8 @@ int main()
 	TestLSDBinaryRadixSort();
 	TestTranspose();
 	TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
-	TestGPULSDRadixSort();
+	TestBuildDestinationTable();
+	//TestGPULSDRadixSort();
 	#endif
 
 	return 0;
