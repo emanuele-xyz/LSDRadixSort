@@ -1192,7 +1192,6 @@ void TestGPULSDRadixSort()
 	std::cout << "-- Test GPU LSD Radix Sort --" << std::endl;
 	#endif
 
-	// TODO: r cannot be larger than 10 because
 	int r = GPU_LSD_SORT_TEST_R;
 	int count = GPU_LSD_SORT_TEST_COUNT;
 	int block = GPU_LSD_SORT_TEST_BLOCK_DIM;
