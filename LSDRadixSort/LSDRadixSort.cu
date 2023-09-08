@@ -1157,10 +1157,6 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, uint32_t* d
 			#if defined(LSD_RADIX_SORT_DBG_PRINT)
 			PrintArray('a', tmp_a, count);
 			#endif
-
-			int kek{ 0 };
-			//size_t smem = (2 * block + 2 * h_count) * sizeof(uint32_t);
-			//LSDRadixSortKernel << <grid, block, smem >> > (a, local_offsets, global_offsets, count, r, bit_group);
 		}
 	}
 
@@ -1168,9 +1164,9 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, uint32_t* d
 	CUDA_CALL(cudaStreamDestroy(s1));
 }
 
-#define GPU_LSD_SORT_TEST_COUNT (1024 * 64)
-#define GPU_LSD_SORT_TEST_BLOCK_DIM (512)
-#define GPU_LSD_SORT_TEST_R (8)
+#define GPU_LSD_SORT_TEST_COUNT (1024 * 2)
+#define GPU_LSD_SORT_TEST_BLOCK_DIM (2)
+#define GPU_LSD_SORT_TEST_R (2)
 #define GPU_LSD_SORT_TEST_MIN 0
 #define GPU_LSD_SORT_TEST_MAX 10
 
