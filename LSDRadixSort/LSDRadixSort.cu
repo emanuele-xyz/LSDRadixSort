@@ -1168,17 +1168,6 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, uint32_t* d
 	CUDA_CALL(cudaStreamDestroy(s1));
 }
 
-/*
-
-	a: | 4 5 6 7 | 5 7 4 7 | 3 5 5 3 | 3 2 8 0 |
-	h: | 1 1 1 1 | 1 1 0 2 | 0 2 0 2 | 2 0 1 1 |
-	l: | 0 1 2 3 | 0 1 2 2 | 0 0 2 2 | 0 2 2 3 |
-	g: | 0 4 8 10| 1 5 9 11| 2 6 9 13| 2 8 9 15|
-	a: | 4 5 6 7 | 4 5 7 7 | 5 5 3 3 | 8 0 2 3 |
-	d: | 0 4 8 10|1 5 11 12|6 7 13 14|2 3 9 15 |
-	a: 4 4 8 0 5 5 5 5 6 2 7 7 7 3 3 3
-*/
-
 #define GPU_LSD_SORT_TEST_COUNT (1024 * 64)
 #define GPU_LSD_SORT_TEST_BLOCK_DIM (512)
 #define GPU_LSD_SORT_TEST_R (8)
