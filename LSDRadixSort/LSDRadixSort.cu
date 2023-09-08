@@ -861,40 +861,6 @@ void BenchmarkBuildHistogram()
 	}
 }
 
-#if 0
-#define BUILD_DESTINATION_TABLE_TEST_COUNT (16)
-#define BUILD_DESTINATION_TABLE_TEST_BLOCK_DIM (4)
-#define BUILD_DESTINATION_TABLE_TEST_R (2)
-#define BUILD_DESTINATION_TABLE_TEST_BIT_GROUP (2)
-#define BUILD_DESTINATION_TABLE_TEST_MIN 0
-#define BUILD_DESTINATION_TABLE_TEST_MAX 10
-
-void TestBuildDestinationTable()
-{
-	#ifdef PRINT_TIMINGS
-	std::cout << "-- Test Build Destination Table --" << std::endl;
-	#endif
-
-	int count = BUILD_DESTINATION_TABLE_TEST_COUNT;
-	int r = BUILD_DESTINATION_TABLE_TEST_R;
-	int bit_group
-		int block = BUILD_DESTINATION_TABLE_TEST_BLOCK_DIM;
-	int grid = (count + block - 1) / block;
-	int h_count = (1 << r);
-	int h_total_count = h_count * grid;
-	int block_sums_count = GetGPUPrefixSumBlockSumsCount(h_total_count, block);
-
-	// TODO: compute sizes
-	// TODO: allocate
-	// TODO: cpu
-	// TODO: print timinngs
-	// TODO: gpu
-	// TODO: print timings
-	// TODO: check arrays
-	// TODO: deallocate
-}
-#endif
-
 /*
 	a: input array
 	l: local offsets
@@ -1349,7 +1315,6 @@ int main()
 	TestLSDBinaryRadixSort();
 	TestTranspose();
 	TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
-	//TestBuildDestinationTable();
 	TestGPULSDRadixSort();
 	#endif
 
