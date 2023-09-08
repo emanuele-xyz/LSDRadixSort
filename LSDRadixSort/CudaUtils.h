@@ -11,3 +11,4 @@ void* MyCudaHostAlloc(size_t size, unsigned flags = 0);
 void* MyCudaMalloc(size_t size);
 cudaEvent_t MyCudaEventCreate();
 float MyCudaEventElapsedTime(cudaEvent_t start, cudaEvent_t end);
+cudaStream_t MyCudaStreamCreate();

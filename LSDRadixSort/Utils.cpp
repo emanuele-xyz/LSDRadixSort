@@ -44,6 +44,18 @@ void CheckArrays(uint32_t* a, uint32_t* b, size_t count)
 	}
 }
 
+void CheckIfSorted(uint32_t* a, int count, int r, int bit_group)
+{
+	for (int i = 1; i < count; i++)
+	{
+		uint32_t prev = a[i - 1];
+		uint32_t curr = a[i];
+		uint32_t prev_val = GET_R_BITS(prev, r, bit_group);
+		uint32_t curr_val = GET_R_BITS(curr, r, bit_group);
+		MYASSERT(prev <= curr);
+	}
+}
+
 void PrintArray(char label, uint32_t* a, int count)
 {
 	std::cout << label << ": ";

@@ -27,3 +27,10 @@ float MyCudaEventElapsedTime(cudaEvent_t start, cudaEvent_t end)
 	CUDA_CALL(cudaEventElapsedTime(&tmp, start, end));
 	return tmp;
 }
+
+cudaStream_t MyCudaStreamCreate()
+{
+	cudaStream_t tmp;
+	CUDA_CALL(cudaStreamCreate(&tmp));
+	return tmp;
+}
