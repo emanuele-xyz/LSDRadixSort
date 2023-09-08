@@ -1132,7 +1132,7 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, uint32_t* d
 				int bid = i / block;
 				int tid = i % block;
 
-				uint32_t val = tmp_a[i];
+				uint32_t val = tmp_a1[i];
 				int key = GET_R_BITS(val, r, bit_group);
 				tmp_d0[i] = (uint32_t)((int64_t)tid - (int64_t)(tmp_l[bid * h_count + key]) + (int64_t)(tmp_g[bid * h_count + key]));
 			}
@@ -1144,8 +1144,17 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, uint32_t* d
 
 			// Scatter
 			ScatterKernel << <grid, block >> > (a, d, count);
-			#ifdef LSD_RADIX_SORT_DBG_PRINT
+			#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
 			CUDA_CALL(cudaMemcpy(tmp_a, a, count * sizeof(uint32_t), cudaMemcpyDeviceToHost));
+			#endif
+			#if defined(LSD_RADIX_SORT_VALIDATE)
+			for (int i = 0; i < count; i++)
+			{
+				tmp_a0[tmp_d0[i]] = tmp_a1[i];
+			}
+			CheckArrays(tmp_a0, tmp_a, count);
+			#endif
+			#if defined(LSD_RADIX_SORT_DBG_PRINT)
 			PrintArray('a', tmp_a, count);
 			#endif
 
