@@ -876,10 +876,9 @@ __global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* b, uint32_t* l, uint32
 	float cells_per_thread_ratio = (float)(h_count) / (float)(bdim);
 	int cells_per_thread = cells_per_thread_ratio < 1.0f ? 1 : (int)(cells_per_thread_ratio + 0.5f);
 
-	uint32_t* smem_a = smem;                      // elements
-	uint32_t* smem_d = &smem[bdim];               // destination table
-	uint32_t* smem_l = &smem[bdim * 2];           // local offsets
-	uint32_t* smem_g = &smem[bdim * 2 + h_count]; // global offsets
+	uint32_t* smem_a = smem;                  // elements
+	uint32_t* smem_l = &smem[bdim];           // local offsets
+	uint32_t* smem_g = &smem[bdim + h_count]; // global offsets
 
 	// load data into smem 
 	smem_a[tid] = a[idx];
@@ -897,14 +896,13 @@ __global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* b, uint32_t* l, uint32
 
 	// sort smem_a
 	SMEMLSDBinaryRadixSort(smem_a, tid, bdim, bit_group * r, r);
-	// build destination table
+	// compute destination
 	uint32_t val = smem_a[tid];
 	int key = GET_R_BITS(val, r, bit_group);
-	smem_d[tid] = (uint32_t)((int64_t)tid - (int64_t)(smem_l[key]) + (int64_t)(smem_g[key]));
-	__syncthreads();
+	uint32_t dst = (uint32_t)((int64_t)tid - (int64_t)(smem_l[key]) + (int64_t)(smem_g[key]));
 
 	// scatter elements using destination table
-	b[smem_d[tid]] = smem_a[tid];
+	b[dst] = smem_a[tid];
 }
 
 __global__ void BuildDestinationTableKernel(uint32_t* a, uint32_t* l, uint32_t* g, uint32_t* d, int count, int r, int bit_group)
@@ -1120,7 +1118,7 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 			#endif
 
 			#else
-			size_t smem = (2 * block + 2 * h_count) * sizeof(uint32_t);
+			size_t smem = (block + 2 * h_count) * sizeof(uint32_t);
 			LSDRadixSortKernel << <grid, block, smem >> > (a, b, local_offsets, global_offsets, count, r, bit_group);
 			#endif
 
@@ -1132,9 +1130,9 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 	CUDA_CALL(cudaStreamDestroy(s1));
 }
 
-#define GPU_LSD_SORT_TEST_COUNT (1024 * 1024 * 256)
-#define GPU_LSD_SORT_TEST_BLOCK_DIM (1024)
-#define GPU_LSD_SORT_TEST_R (4)
+#define GPU_LSD_SORT_TEST_COUNT (1024 * 1024 * 128)
+#define GPU_LSD_SORT_TEST_BLOCK_DIM (256)
+#define GPU_LSD_SORT_TEST_R (1)
 #define GPU_LSD_SORT_TEST_MIN 0
 #define GPU_LSD_SORT_TEST_MAX 10
 
