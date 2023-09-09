@@ -1034,6 +1034,8 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 					dim3 t_block(block_dim, block_dim);
 					dim3 t_grid((cols + block_dim - 1) / block_dim, (rows + block_dim - 1) / block_dim);
 					size_t t_smem = block_dim * block_dim * sizeof(uint32_t);
+					// TODO: https://github.com/pytorch/pytorch/issues/49928
+					// NOTE: https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications
 					TransposeSMEMKernel << <t_grid, t_block, t_smem, s2 >> > (global_offsets, transposed_global_offsets, rows, cols);
 				}
 				GPUPrefixSum(transposed_global_offsets, h_total_count, block, block_sums, s2);
