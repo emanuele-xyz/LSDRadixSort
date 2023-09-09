@@ -936,6 +936,7 @@ __global__ void ScatterKernel(uint32_t* a, uint32_t* b, uint32_t* d, int count)
 
 //#define LSD_RADIX_SORT_DBG_PRINT
 //#define LSD_RADIX_SORT_VALIDATE
+#define LSD_RADIX_SORT_NAIVE
 
 void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums, uint32_t* d, int grid, int block, int block_sums_count, int count, int h_count, int r)
 {
