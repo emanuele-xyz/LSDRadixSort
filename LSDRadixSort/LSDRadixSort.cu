@@ -1130,9 +1130,9 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 	CUDA_CALL(cudaStreamDestroy(s1));
 }
 
-#define GPU_LSD_SORT_TEST_COUNT (1024 * 1024 * 128)
+#define GPU_LSD_SORT_TEST_COUNT (1024 * 1024 * 512)
 #define GPU_LSD_SORT_TEST_BLOCK_DIM (256)
-#define GPU_LSD_SORT_TEST_R (1)
+#define GPU_LSD_SORT_TEST_R (4)
 #define GPU_LSD_SORT_TEST_MIN 0
 #define GPU_LSD_SORT_TEST_MAX 10
 
