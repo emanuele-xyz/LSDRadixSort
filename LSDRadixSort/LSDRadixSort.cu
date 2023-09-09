@@ -861,12 +861,7 @@ void BenchmarkBuildHistogram()
 	}
 }
 
-/*
-	a: input array
-	l: local offsets
-	g: global offsets
-*/
-__global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* l, uint32_t* g, int count, int r, int bit_group)
+__global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* b, uint32_t* l, uint32_t* g, int count, int r, int bit_group)
 {
 	extern __shared__ uint32_t smem[];
 
@@ -909,7 +904,7 @@ __global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* l, uint32_t* g, int co
 	__syncthreads();
 
 	// scatter elements using destination table
-	a[smem_d[tid]] = smem_a[tid];
+	b[smem_d[tid]] = smem_a[tid];
 }
 
 __global__ void BuildDestinationTableKernel(uint32_t* a, uint32_t* l, uint32_t* g, uint32_t* d, int count, int r, int bit_group)
@@ -1067,6 +1062,7 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 
 		// Sort
 		{
+			#if defined(LSD_RADIX_SORT_NAIVE)
 			// Block local sort
 			size_t smem = block * sizeof(uint32_t);
 			int first_bit = bit_group * r;
@@ -1123,6 +1119,11 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 			PrintArray('b', tmp_b, count);
 			#endif
 
+			#else
+			size_t smem = (2 * block + 2 * h_count) * sizeof(uint32_t);
+			LSDRadixSortKernel << <grid, block, smem >> > (a, b, local_offsets, global_offsets, count, r, bit_group);
+			#endif
+
 			std::swap(a, b);
 		}
 	}
@@ -1131,7 +1132,7 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 	CUDA_CALL(cudaStreamDestroy(s1));
 }
 
-#define GPU_LSD_SORT_TEST_COUNT (1024 * 1024 * 1024)
+#define GPU_LSD_SORT_TEST_COUNT (1024 * 1024 * 256)
 #define GPU_LSD_SORT_TEST_BLOCK_DIM (1024)
 #define GPU_LSD_SORT_TEST_R (4)
 #define GPU_LSD_SORT_TEST_MIN 0
