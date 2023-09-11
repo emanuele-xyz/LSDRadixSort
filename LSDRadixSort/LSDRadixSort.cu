@@ -12,8 +12,8 @@
 //#define BENCHMARK_CPU_LSD_RADIX_SORT
 //#define BENCHMARK_BLOCK_PREFIX_SUM
 //#define BENCHMARK_GPU_PREFIX_SUM
-#define BENCHMARK_LSD_BINARY_RADIX_SORT
-//#define BENCHMARK_TRANSPOSE
+//#define BENCHMARK_LSD_BINARY_RADIX_SORT
+#define BENCHMARK_TRANSPOSE
 //#define BENCHMARK_BUILD_HISTOGRAMS
 //#define BENCHMARK_GPU_LSD_RADIX_SORT
 
@@ -533,25 +533,15 @@ __global__ void TransposeSMEMKernel(uint32_t* a, uint32_t* b, int m, int n)
 	}
 }
 
-#define TRANSPOSE_TEST_M (128)
-#define TRANSPOSE_TEST_N (32)
-#define TRANSPOSE_TEST_BLOCK_DIM 32
-#define TRANSPOSE_TEST_MIN_ELEM 0
-#define TRANSPOSE_TEST_MAX_ELEM 9
-
-void TestTranspose()
+void TestTranspose(int m, int n, uint32_t min, uint32_t max)
 {
 	#ifdef PRINT_TIMINGS
 	std::cout << "-- Test Transpose --" << std::endl;
 	#endif
 
-	RNG rng = RNG(0, TRANSPOSE_TEST_MIN_ELEM, TRANSPOSE_TEST_MAX_ELEM);
-
 	// allocate
-	int m = TRANSPOSE_TEST_M;
-	int n = TRANSPOSE_TEST_N;
 	int count = m * n;
-	int block_dim = TRANSPOSE_TEST_BLOCK_DIM;
+	int block_dim = 32;
 	size_t size = count * sizeof(uint32_t);
 	uint32_t* h_a = (uint32_t*)MyCudaHostAlloc(size);
 	uint32_t* h_b = (uint32_t*)MyCudaHostAlloc(size);
@@ -564,6 +554,7 @@ void TestTranspose()
 	#endif
 
 	// populate input
+	RNG rng = RNG(0, min, max);
 	for (int i = 0; i < count; i++) h_a[i] = rng.Get();
 
 	// sequential transpose
@@ -593,8 +584,8 @@ void TestTranspose()
 
 	// print timings
 	#ifdef PRINT_TIMINGS
-	std::cout << "Sqeuential Transpose: " << sequential_ms << " ms" << std::endl;
-	std::cout << "GPU Naive Transpose: " << gpu_naive_ms << " ms - Speedup: x" << sequential_ms / gpu_naive_ms << std::endl;
+	std::cout << "CPU: " << sequential_ms << " ms" << std::endl;
+	std::cout << "GPU Naive: " << gpu_naive_ms << " ms - Speedup: x" << sequential_ms / gpu_naive_ms << std::endl;
 	#endif
 
 	// check matrices
@@ -619,7 +610,7 @@ void TestTranspose()
 
 	// print timings
 	#ifdef PRINT_TIMINGS
-	std::cout << "GPU SMEM Transpose: " << gpu_smem_ms << " ms - Speedup: x" << sequential_ms / gpu_smem_ms << std::endl;
+	std::cout << "GPU SMEM: " << gpu_smem_ms << " ms - Speedup: x" << sequential_ms / gpu_smem_ms << std::endl;
 	#endif
 
 	// check matrices
@@ -1094,6 +1085,27 @@ void BenchmarkLSDBinaryRadixSort()
 	}
 }
 
+void BenchmarkTranspose()
+{
+	constexpr int dims_count = 5;
+	int dims[dims_count] =
+	{
+		1024 * 1,
+		1024 * 2,
+		1024 * 4,
+		1024 * 8,
+		1024 * 16,
+	};
+
+	for (int i = 0; i < dims_count; i++)
+	{
+		for (int j = 0; j < dims_count; j++)
+		{
+			TestTranspose(dims[i], dims[j], 0, UINT32_MAX);
+		}
+	}
+}
+
 void BenchmarkBuildHistogram()
 {
 	for (int c_i = 0; c_i < elems_count; c_i++)
@@ -1142,7 +1154,7 @@ int main()
 	#endif
 
 	#if defined(BENCHMARK_TRANSPOSE)
-	// TODO: to be implemented
+	BenchmarkTranspose();
 	#endif
 
 	#if defined(BENCHMARK_BUILD_HISTOGRAMS)
@@ -1153,7 +1165,6 @@ int main()
 	// TODO: to be implemented
 	#endif
 
-	//TestTranspose();
 	//TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
 	//TestGPULSDRadixSort();
 
