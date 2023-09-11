@@ -747,8 +747,6 @@ void TestBuildHistogram(int count, int block, int r, int bit_group, int min, int
 
 		#ifdef BENCHMARK_BUILD_HISTOGRAMS
 		return;
-		#else
-		MYCRASH();
 		#endif
 	}
 
@@ -1001,7 +999,6 @@ void TestGPULSDRadixSort()
 	std::cout << "R: " << r << std::endl;
 	#endif
 
-	/*
 	if (total_size > size)
 	{
 		#ifdef PRINT_TIMINGS
@@ -1010,11 +1007,8 @@ void TestGPULSDRadixSort()
 
 		#ifdef BENCHMARK_GPU_LSD_RADIX_SORT
 		return;
-		#else
-		MYCRASH();
 		#endif
 	}
-	*/
 
 	if (r > 10)
 	{
