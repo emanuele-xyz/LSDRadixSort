@@ -10,10 +10,6 @@
 //#define BENCHMARK_GPU_LSD_RADIX_SORT
 #define PRINT_TIMINGS
 
-/*
-	TODO: watch this https://www.youtube.com/watch?v=fsC3QeZHM1U
-*/
-
 // Windows only
 #define _CRTDBG_MAP_ALLOC
 #include <stdlib.h>
