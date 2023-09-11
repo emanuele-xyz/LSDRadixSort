@@ -1,11 +1,6 @@
 #include <iostream>
 #include <stdint.h>
 
-// TODO: Test code in release build! 
-// It looks like LSDBinaryRadixSort doesn't work in release build
-// This is probably due to a race condition
-// Sprinkle code with __syncthreads() and check what happens
-
 //#define BENCHMARK_BUILD_HISTOGRAMS
 //#define BENCHMARK_GPU_LSD_RADIX_SORT
 #define PRINT_TIMINGS
