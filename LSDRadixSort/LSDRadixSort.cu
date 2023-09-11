@@ -905,35 +905,6 @@ __global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* b, uint32_t* l, uint32
 	b[dst] = smem_a[tid];
 }
 
-__global__ void BuildDestinationTableKernel(uint32_t* a, uint32_t* l, uint32_t* g, uint32_t* d, int count, int r, int bit_group)
-{
-	int tid = threadIdx.x;
-	int bdim = blockDim.x;
-	int bid = blockIdx.x;
-	int idx = bid * bdim + tid;
-
-	if (idx > count) return;
-
-	uint32_t val = a[idx];
-	int key = GET_R_BITS(val, r, bit_group);
-	int h_count = (1 << r);
-	d[idx] = (uint32_t)((int64_t)(tid)-(int64_t)(l[bid * h_count + key]) + (int64_t)(g[bid * h_count + key]));
-}
-
-__global__ void ScatterKernel(uint32_t* a, uint32_t* b, uint32_t* d, int count)
-{
-	int tid = threadIdx.x;
-	int bdim = blockDim.x;
-	int bid = blockIdx.x;
-	int idx = bid * bdim + tid;
-
-	if (idx > count) return;
-
-	uint32_t val = a[idx];
-	uint32_t dst = d[idx];
-	b[dst] = val;
-}
-
 void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums, uint32_t* d, int grid, int block, int block_sums_count, int count, int h_count, int r)
 {
 	cudaStream_t s1 = MyCudaStreamCreate();
