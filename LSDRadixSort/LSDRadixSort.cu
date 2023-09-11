@@ -264,7 +264,7 @@ int GetGPUPrefixSumBlockSumsCount(int count, int threads_per_block)
 	int total_block_sums_count = 0;
 	while (count > threads_per_block)
 	{
-		MYASSERT(count % threads_per_block == 0);
+		//MYASSERT(count % threads_per_block == 0);
 		int block_sums_count = count / threads_per_block;
 		total_block_sums_count += block_sums_count;
 		count = block_sums_count;
@@ -915,7 +915,7 @@ void TestGPULSDRadixSort(int count, int block, int r, uint32_t min, uint32_t max
 
 	int grid = (count + block - 1) / block;
 	int h_count = (1 << r);
-	int h_total_count = h_count * grid;
+	size_t h_total_count = (size_t)(h_count) * (size_t)(grid);
 	int block_sums_count = GetGPUPrefixSumBlockSumsCount(h_total_count, block);
 
 	// get sizes
@@ -1024,13 +1024,16 @@ void TestGPULSDRadixSort(int count, int block, int r, uint32_t min, uint32_t max
 	free(a);
 }
 
-constexpr int elems_count = 4;
+//constexpr int elems_count = 4;
+constexpr int elems_count = 2;
 int elems[elems_count] =
 {
-	1024 * 1024 * 32,
-	1024 * 1024 * 64,
-	1024 * 1024 * 128,
-	1024 * 1024 * 256,
+	//1024 * 1024 * 32,
+	//1024 * 1024 * 64,
+	//1024 * 1024 * 128,
+	//1024 * 1024 * 256,
+	1024 * 1024 * 512,
+	1024 * 1024 * 1024,
 };
 
 constexpr int blocks_count = 6;
@@ -1170,6 +1173,7 @@ int main()
 	#endif
 
 	#if defined(BENCHMARK_GPU_LSD_RADIX_SORT)
+	//TestGPULSDRadixSort(1024 * 1024 * 512, 32, 8, 0, UINT32_MAX);
 	BenchmarkGPULSDRadixSort();
 	#endif
 

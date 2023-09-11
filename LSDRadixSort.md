@@ -814,3 +814,412 @@ R: 8
 CPU 4550.26 ms
 GPU 932.38 ms
 Speedup: x4.88027
+
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.375 GB
+Block Sums: 0.00403226 GB
+Block Size: 32
+R: 1
+CPU 53922.2 ms
+GPU 4010.36 ms
+Speedup: x13.4457
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.75 GB
+Block Sums: 0.00806452 GB
+Block Size: 32
+R: 2
+CPU 25498.4 ms
+GPU 2617.87 ms
+Speedup: x9.74012
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 3 GB
+Block Sums: 0.0322581 GB
+Block Size: 32
+R: 4
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 48 GB
+Block Sums: 3.72529e-09 GB
+Block Size: 32
+R: 8
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.1875 GB
+Block Sums: 0.000992063 GB
+Block Size: 64
+R: 1
+CPU 53809.1 ms
+GPU 2133.51 ms
+Speedup: x25.2209
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.375 GB
+Block Sums: 0.00198413 GB
+Block Size: 64
+R: 2
+CPU 25522.8 ms
+GPU 1537.25 ms
+Speedup: x16.6029
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 1.5 GB
+Block Sums: 0.00793651 GB
+Block Size: 64
+R: 4
+CPU 12995.5 ms
+GPU 2065.03 ms
+Speedup: x6.29312
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 24 GB
+Block Sums: 3.72529e-09 GB
+Block Size: 64
+R: 8
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.09375 GB
+Block Sums: 0.000246067 GB
+Block Size: 128
+R: 1
+CPU 53566.9 ms
+GPU 1581.39 ms
+Speedup: x33.8734
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.1875 GB
+Block Sums: 0.000492129 GB
+Block Size: 128
+R: 2
+CPU 25529.1 ms
+GPU 1235.98 ms
+Speedup: x20.6549
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.75 GB
+Block Sums: 0.00196851 GB
+Block Size: 128
+R: 4
+CPU 12957.9 ms
+GPU 1103.74 ms
+Speedup: x11.74
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 12 GB
+Block Sums: 0.0314961 GB
+Block Size: 128
+R: 8
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.046875 GB
+Block Sums: 6.12773e-05 GB
+Block Size: 256
+R: 1
+CPU 53586.2 ms
+GPU 1494.18 ms
+Speedup: x35.8632
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.09375 GB
+Block Sums: 0.000122551 GB
+Block Size: 256
+R: 2
+CPU 25404.1 ms
+GPU 1179.45 ms
+Speedup: x21.539
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.375 GB
+Block Sums: 0.0004902 GB
+Block Size: 256
+R: 4
+CPU 12892.6 ms
+GPU 1063.82 ms
+Speedup: x12.1192
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 6 GB
+Block Sums: 0.00784314 GB
+Block Size: 256
+R: 8
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.0234375 GB
+Block Sums: 1.52923e-05 GB
+Block Size: 512
+R: 1
+CPU 53764.8 ms
+GPU 1905.92 ms
+Speedup: x28.2093
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.046875 GB
+Block Sums: 3.05809e-05 GB
+Block Size: 512
+R: 2
+CPU 25414 ms
+GPU 1569.22 ms
+Speedup: x16.1953
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.1875 GB
+Block Sums: 0.000122312 GB
+Block Size: 512
+R: 4
+CPU 12942.1 ms
+GPU 1402.29 ms
+Speedup: x9.22932
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 3 GB
+Block Sums: 0.00195695 GB
+Block Size: 512
+R: 8
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.0117188 GB
+Block Sums: 3.81842e-06 GB
+Block Size: 1024
+R: 1
+CPU 53595.8 ms
+GPU 2695.74 ms
+Speedup: x19.8817
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.0234375 GB
+Block Sums: 7.64057e-06 GB
+Block Size: 1024
+R: 2
+CPU 25428.3 ms
+GPU 2183.15 ms
+Speedup: x11.6475
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 0.09375 GB
+Block Sums: 3.05511e-05 GB
+Block Size: 1024
+R: 4
+CPU 12952 ms
+GPU 1921.18 ms
+Speedup: x6.74169
+-- Test GPU LSD Radix Sort --
+Elements: 2 GB
+Histograms: 1.5 GB
+Block Sums: 0.000488762 GB
+Block Size: 1024
+R: 8
+CPU 9096.09 ms
+GPU 4111.55 ms
+Speedup: x2.21232
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.75 GB
+Block Sums: 0.00806452 GB
+Block Size: 32
+R: 1
+CPU 107238 ms
+GPU 47385.7 ms
+Speedup: x2.2631
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 1.5 GB
+Block Sums: 0.016129 GB
+Block Size: 32
+R: 2
+CPU 51240 ms
+GPU 19970.1 ms
+Speedup: x2.56584
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 6 GB
+Block Sums: 0.0645161 GB
+Block Size: 32
+R: 4
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 96 GB
+Block Sums: 3.72529e-09 GB
+Block Size: 32
+R: 8
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.375 GB
+Block Sums: 0.00198413 GB
+Block Size: 64
+R: 1
+CPU 107088 ms
+GPU 22233.1 ms
+Speedup: x4.81661
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.75 GB
+Block Sums: 0.00396826 GB
+Block Size: 64
+R: 2
+CPU 50892.9 ms
+GPU 9106.88 ms
+Speedup: x5.5884
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 3 GB
+Block Sums: 0.015873 GB
+Block Size: 64
+R: 4
+CPU 25707.7 ms
+GPU 5858.82 ms
+Speedup: x4.38786
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 48 GB
+Block Sums: 3.72529e-09 GB
+Block Size: 64
+R: 8
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.1875 GB
+Block Sums: 0.000492129 GB
+Block Size: 128
+R: 1
+CPU 106714 ms
+GPU 12122.9 ms
+Speedup: x8.80268
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.375 GB
+Block Sums: 0.000984255 GB
+Block Size: 128
+R: 2
+CPU 50678.8 ms
+GPU 5310.32 ms
+Speedup: x9.54346
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 1.5 GB
+Block Sums: 0.00393701 GB
+Block Size: 128
+R: 4
+CPU 26446.8 ms
+GPU 3515.04 ms
+Speedup: x7.5239
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 24 GB
+Block Sums: 3.72529e-09 GB
+Block Size: 128
+R: 8
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.09375 GB
+Block Sums: 0.000122551 GB
+Block Size: 256
+R: 1
+CPU 107178 ms
+GPU 7710.93 ms
+Speedup: x13.8995
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.1875 GB
+Block Sums: 0.000245098 GB
+Block Size: 256
+R: 2
+CPU 51018.7 ms
+GPU 3872.01 ms
+Speedup: x13.1763
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.75 GB
+Block Sums: 0.000980396 GB
+Block Size: 256
+R: 4
+CPU 26111.4 ms
+GPU 2707.77 ms
+Speedup: x9.64314
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 12 GB
+Block Sums: 0.0156863 GB
+Block Size: 256
+R: 8
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.046875 GB
+Block Sums: 3.05809e-05 GB
+Block Size: 512
+R: 1
+CPU 107092 ms
+GPU 4319.55 ms
+Speedup: x24.7924
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.09375 GB
+Block Sums: 6.11581e-05 GB
+Block Size: 512
+R: 2
+CPU 51128.4 ms
+GPU 3418.6 ms
+Speedup: x14.956
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.375 GB
+Block Sums: 0.000244621 GB
+Block Size: 512
+R: 4
+CPU 26197.7 ms
+GPU 2683.12 ms
+Speedup: x9.76393
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 6 GB
+Block Sums: 0.0039139 GB
+Block Size: 512
+R: 8
+SKIP: auxiliary data is more than input
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.0234375 GB
+Block Sums: 7.64057e-06 GB
+Block Size: 1024
+R: 1
+CPU 107031 ms
+GPU 5805.23 ms
+Speedup: x18.4369
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.046875 GB
+Block Sums: 1.52774e-05 GB
+Block Size: 1024
+R: 2
+CPU 51208.4 ms
+GPU 4410.72 ms
+Speedup: x11.61
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 0.1875 GB
+Block Sums: 6.10985e-05 GB
+Block Size: 1024
+R: 4
+CPU 26069.9 ms
+GPU 4194.71 ms
+Speedup: x6.21496
+-- Test GPU LSD Radix Sort --
+Elements: 4 GB
+Histograms: 3 GB
+Block Sums: 0.00097752 GB
+Block Size: 1024
+R: 8
+CPU 18134 ms
+GPU 8570.71 ms
+Speedup: x2.11581
