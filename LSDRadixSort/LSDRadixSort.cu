@@ -1,10 +1,5 @@
 #include <iostream>
 #include <stdint.h>
-
-//#define BENCHMARK_BUILD_HISTOGRAMS
-//#define BENCHMARK_GPU_LSD_RADIX_SORT
-#define PRINT_TIMINGS
-
 // Windows only
 #define _CRTDBG_MAP_ALLOC
 #include <stdlib.h>
@@ -13,6 +8,10 @@
 
 #include "Utils.h"
 #include "CudaUtils.h"
+
+//#define BENCHMARK_BUILD_HISTOGRAMS
+//#define BENCHMARK_GPU_LSD_RADIX_SORT
+#define PRINT_TIMINGS
 
 void LSDRadixSortPass(uint32_t* in, uint32_t* out, int count, uint32_t* histogram, int r, int bit_group)
 {
