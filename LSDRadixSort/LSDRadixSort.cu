@@ -995,8 +995,8 @@ __global__ void ScatterKernel(uint32_t* a, uint32_t* b, uint32_t* d, int count)
 }
 
 //#define LSD_RADIX_SORT_DBG_PRINT
-//#define LSD_RADIX_SORT_VALIDATE
-#define LSD_RADIX_SORT_NAIVE
+#define LSD_RADIX_SORT_VALIDATE
+//#define LSD_RADIX_SORT_NAIVE
 
 void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums, uint32_t* d, int grid, int block, int block_sums_count, int count, int h_count, int r)
 {
@@ -1095,13 +1095,16 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 					int t_grid = (cols * rows + t_block - 1) / t_block;
 					size_t t_smem = block * sizeof(uint32_t);
 					TransposeSMEM1DKernel << <t_grid, t_block, t_smem, s2 >> > (global_offsets, transposed_global_offsets, rows, cols);
+					CUDA_CALL(cudaDeviceSynchronize());
 				}
 				GPUPrefixSum(transposed_global_offsets, h_total_count, block, block_sums, s2);
+				CUDA_CALL(cudaDeviceSynchronize());
 				{
 					int t_block = block_dim * block_dim;
 					int t_grid = (cols * rows + t_block - 1) / t_block;
 					size_t t_smem = block * sizeof(uint32_t);
 					TransposeSMEM1DKernel << <t_grid, t_block, t_smem, s2 >> > (transposed_global_offsets, global_offsets, cols, rows);
+					CUDA_CALL(cudaDeviceSynchronize());
 				}
 				#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
 				CUDA_CALL(cudaMemcpy(tmp_g, global_offsets, h_count * grid * sizeof(uint32_t), cudaMemcpyDeviceToHost));
@@ -1183,16 +1186,19 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 			#endif
 
 			std::swap(a, b);
-		}
 	}
+}
 
 	CUDA_CALL(cudaStreamDestroy(s2));
 	CUDA_CALL(cudaStreamDestroy(s1));
 }
 
-#define GPU_LSD_SORT_TEST_COUNT (1024 * 1024 * 512)
+#define GPU_LSD_SORT_TEST_COUNT (1024 * 1024)
 #define GPU_LSD_SORT_TEST_BLOCK_DIM (256)
 #define GPU_LSD_SORT_TEST_R (4)
+//#define GPU_LSD_SORT_TEST_COUNT (16)
+//#define GPU_LSD_SORT_TEST_BLOCK_DIM (4)
+//#define GPU_LSD_SORT_TEST_R (2)
 #define GPU_LSD_SORT_TEST_MIN 0
 #define GPU_LSD_SORT_TEST_MAX 10
 

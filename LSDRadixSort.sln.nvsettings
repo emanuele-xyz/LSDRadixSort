@@ -1,2 +1,2 @@
 [WarpWatch]
-Expressions=t_i, t_j, a[800]
+Expressions=t_i, t_j, a[800], smem[2]
