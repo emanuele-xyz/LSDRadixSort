@@ -9,8 +9,8 @@
 #include "Utils.h"
 #include "CudaUtils.h"
 
-#define BENCHMARK_CPU_LSD_RADIX_SORT
-//#define BENCHMARK_BLOCK_PREFIX_SUM
+//#define BENCHMARK_CPU_LSD_RADIX_SORT
+#define BENCHMARK_BLOCK_PREFIX_SUM
 //#define BENCHMARK_GPU_PREFIX_SUM
 //#define BENCHMARK_LSD_BINARY_RADIX_SORT
 //#define BENCHMARK_TRANSPOSE
@@ -65,7 +65,7 @@ void LSDRadixSort(uint32_t* in, uint32_t* out, int count, uint32_t* histogram, i
 	}
 }
 
-void TestSequentialLSDRadixSort(int count, int r, int min, int max)
+void TestSequentialLSDRadixSort(int count, int r, uint32_t min, uint32_t max)
 {
 	#ifdef PRINT_TIMINGS
 	std::cout << "-- Test CPU LSD radix sort --" << std::endl;
@@ -97,7 +97,7 @@ void TestSequentialLSDRadixSort(int count, int r, int min, int max)
 	}
 
 	#ifdef PRINT_TIMINGS
-	std::cout << "CPU STD Sort: " << std_sort_ms << " ms" << std::endl;
+	std::cout << "STD Sort: " << std_sort_ms << " ms" << std::endl;
 	#endif
 
 	// sort a writing result in b using LSD radix sort
@@ -110,7 +110,7 @@ void TestSequentialLSDRadixSort(int count, int r, int min, int max)
 	}
 
 	#ifdef PRINT_TIMINGS
-	std::cout << "CPU LSD Radix Sort: " << lsd_radix_sort_ms << " ms " << std::endl;
+	std::cout << "LSD Sort: " << lsd_radix_sort_ms << " ms " << std::endl;
 	std::cout << "Speedup: x" << std_sort_ms / lsd_radix_sort_ms << std::endl;
 	#endif
 
@@ -203,19 +203,12 @@ __global__ void BlockPrefixSumKernel(uint32_t* a, uint32_t* block_sums)
 	a[i] = smem[tid];
 }
 
-#define BLOCK_PREFIX_SUM_TEST_ELEMS_COUNT (1024)
-#define BLOCK_PREFIX_SUM_TEST_ELEMS_MIN 0
-#define BLOCK_PREFIX_SUM_TEST_ELEMS_MAX 10
-
-void TestBlockPrefixSumKernel()
+void TestBlockPrefixSumKernel(int count, uint32_t min, uint32_t max)
 {
 	#ifdef PRINT_TIMINGS
-	std::cout << "-- Test block exclusive prefix sum --" << std::endl;
+	std::cout << "-- Test block prefix sum --" << std::endl;
 	#endif
 
-	RNG rng = RNG(0, BLOCK_PREFIX_SUM_TEST_ELEMS_MIN, BLOCK_PREFIX_SUM_TEST_ELEMS_MAX);
-
-	int count = BLOCK_PREFIX_SUM_TEST_ELEMS_COUNT;
 	size_t size = count * sizeof(uint32_t);
 	size_t blocks_size = 1 * sizeof(uint32_t);
 	uint32_t* h_a = (uint32_t*)MyCudaHostAlloc(size);
@@ -223,6 +216,11 @@ void TestBlockPrefixSumKernel()
 	uint32_t* d_a = (uint32_t*)MyCudaMalloc(size);
 	uint32_t* d_block_sums = (uint32_t*)MyCudaMalloc(blocks_size);
 
+	#ifdef PRINT_TIMINGS
+	std::cout << "Processing " << (double)(size) / 1024.0 << " KB of data" << std::endl;
+	#endif
+
+	RNG rng = RNG(0, min, max);
 	for (int i = 0; i < count; i++) h_a[i] = rng.Get();
 
 	float parallel_ms = 0;
@@ -247,14 +245,9 @@ void TestBlockPrefixSumKernel()
 		sequential_ms = GetElapsedMS(start, end);
 	}
 
-	#ifdef PRINT_ARRAY
-	PrintArray('a', h_a, count);
-	PrintArray('b', h_b, count);
-	#endif
-
 	#ifdef PRINT_TIMINGS
-	std::cout << "Prefix Sum Sequential: " << sequential_ms << " ms" << std::endl;
-	std::cout << "Prefix Sum Block: " << parallel_ms << " ms" << std::endl;
+	std::cout << "CPU: " << sequential_ms << " ms" << std::endl;
+	std::cout << "GPU: " << parallel_ms << " ms" << std::endl;
 	std::cout << "Speedup: x" << sequential_ms / parallel_ms << std::endl;
 	#endif
 
@@ -264,7 +257,7 @@ void TestBlockPrefixSumKernel()
 	CUDA_CALL(cudaFree(d_a));
 	CUDA_CALL(cudaFreeHost(h_b));
 	CUDA_CALL(cudaFreeHost(h_a));
-	}
+}
 
 int GetGPUPrefixSumBlockSumsCount(int count, int threads_per_block)
 {
@@ -305,7 +298,7 @@ void GPUPrefixSum(uint32_t* d_a, int count, int threads_per_block, uint32_t* d_b
 	}
 }
 
-void TestGPUPrefixSum(int count, int threads_per_block, int min, int max)
+void TestGPUPrefixSum(int count, int threads_per_block, uint32_t min, uint32_t max)
 {
 	#ifdef PRINT_TIMINGS
 	std::cout << "-- Test exclusive prefix sum --" << std::endl;
@@ -716,7 +709,7 @@ __global__ void BuildHistogramsKernel(uint32_t* a, uint32_t* h, int count, int r
 	}
 }
 
-void TestBuildHistogram(int count, int block, int r, int bit_group, int min, int max)
+void TestBuildHistogram(int count, int block, int r, int bit_group, uint32_t min, uint32_t max)
 {
 	#ifdef PRINT_TIMINGS
 	std::cout << "-- Test Build Histogram --" << std::endl;
@@ -1085,6 +1078,14 @@ void BenchmarkSequentialLSDRadixSort()
 	}
 }
 
+void BenchmarkBlockPrefixSum()
+{
+	for (int i = 0; i < blocks_count; i++)
+	{
+		TestBlockPrefixSumKernel(blocks[i], 0, UINT32_MAX);
+	}
+}
+
 void BenchmarkGPUPrefixSum()
 {
 	for (int i = 0; i < blocks_count; i++)
@@ -1132,7 +1133,7 @@ int main()
 	#endif
 
 	#if defined(BENCHMARK_BLOCK_PREFIX_SUM)
-	// TODO: to be implemented
+	BenchmarkBlockPrefixSum();
 	#endif
 
 	#if defined(BENCHMARK_GPU_PREFIX_SUM)
@@ -1155,7 +1156,6 @@ int main()
 	// TODO: to be implemented
 	#endif
 
-	//TestBlockPrefixSumKernel();
 	//TestGPUPrefixSum(PREFIX_SUM_TEST_ELEMS_COUNT, PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK, PREFIX_SUM_TEST_ELEMS_MIN, PREFIX_SUM_TEST_ELEMS_MAX);
 	//TestLSDBinaryRadixSort();
 	//TestTranspose();
