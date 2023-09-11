@@ -9,8 +9,17 @@
 #include "Utils.h"
 #include "CudaUtils.h"
 
-//#define BENCHMARK_BUILD_HISTOGRAMS
-//#define BENCHMARK_GPU_LSD_RADIX_SORT
+#define BENCHMARK_ALL
+#if defined(BENCHMARK_ALL)
+#define BENCHMARK_CPU_LSD_RADIX_SORT
+#define BENCHMARK_BLOCK_PREFIX_SUM
+#define BENCHMARK_GPU_PREFIX_SUM
+#define BENCHMARK_LSD_BINARY_RADIX_SORT
+#define BENCHMARK_TRANSPOSE
+#define BENCHMARK_BUILD_HISTOGRAMS
+#define BENCHMARK_GPU_LSD_RADIX_SORT
+#endif
+
 #define PRINT_TIMINGS
 
 void LSDRadixSortPass(uint32_t* in, uint32_t* out, int count, uint32_t* histogram, int r, int bit_group)
@@ -807,48 +816,6 @@ void TestBuildHistogram(int count, int block, int r, int bit_group, int min, int
 	CUDA_CALL(cudaFreeHost(h_a));
 }
 
-void BenchmarkBuildHistogram()
-{
-	int counts[] =
-	{
-		1024 * 1024 * 64,
-		1024 * 1024 * 128,
-		1024 * 1024 * 256,
-		1024 * 1024 * 512,
-		1024 * 1024 * 1024,
-	};
-
-	int blocks[] =
-	{
-		64,
-		128,
-		256,
-		512,
-		1024,
-	};
-
-	int rs[] =
-	{
-		1,
-		2,
-		4,
-		8,
-		16,
-	};
-
-	for (int c_i = 0; c_i < MYARRAYCOUNT(counts); c_i++)
-	{
-		for (int b_i = 0; b_i < MYARRAYCOUNT(blocks); b_i++)
-		{
-			for (int r_i = 0; r_i < MYARRAYCOUNT(rs); r_i++)
-			{
-				RNG rng = RNG(0, 0, (32 / rs[r_i]));
-				TestBuildHistogram(counts[c_i], blocks[b_i], rs[r_i], rng.Get(), 0, UINT32_MAX);
-			}
-		}
-	}
-}
-
 __global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* b, uint32_t* l, uint32_t* g, int count, int r, int bit_group)
 {
 	extern __shared__ uint32_t smem[];
@@ -1088,31 +1055,57 @@ void TestGPULSDRadixSort()
 	free(a);
 }
 
+constexpr int elems_count = 4;
+int elems[elems_count] =
+{
+	1024 * 1024 * 32,
+	1024 * 1024 * 64,
+	1024 * 1024 * 128,
+	1024 * 1024 * 256,
+};
+
+constexpr int blocks_count = 6;
+int blocks[blocks_count] =
+{
+	32,
+	64,
+	128,
+	256,
+	512,
+	1024,
+};
+
+constexpr int rs_count = 4;
+int rs[rs_count] =
+{
+	1,
+	2,
+	4,
+	8,
+};
+
 void BenchmarkGPUPrefixSum()
 {
-	int count[] =
+	for (int i = 0; i < blocks_count; i++)
 	{
-		1024 * 1024 * 64,
-		1024 * 1024 * 128,
-		1024 * 1024 * 256,
-		1024 * 1024 * 512,
-		1024 * 1024 * 1024,
-	};
-
-	int threads_per_block[] =
-	{
-		64,
-		128,
-		256,
-		512,
-		1024,
-	};
-
-	for (int i = 0; i < MYARRAYCOUNT(threads_per_block); i++)
-	{
-		for (int j = 0; j < MYARRAYCOUNT(count); j++)
+		for (int j = 0; j < elems_count; j++)
 		{
-			TestGPUPrefixSum(count[i], threads_per_block[j], 0, 10);
+			TestGPUPrefixSum(elems[i], blocks[j], 0, UINT32_MAX);
+		}
+	}
+}
+
+void BenchmarkBuildHistogram()
+{
+	for (int c_i = 0; c_i < elems_count; c_i++)
+	{
+		for (int b_i = 0; b_i < blocks_count; b_i++)
+		{
+			for (int r_i = 0; r_i < rs_count; r_i++)
+			{
+				RNG rng = RNG(0, 0, (32 / rs[r_i]));
+				TestBuildHistogram(elems[c_i], blocks[b_i], rs[r_i], rng.Get(), 0, UINT32_MAX);
+			}
 		}
 	}
 }
@@ -1133,9 +1126,34 @@ int main()
 {
 	CheckForHostLeaks();
 
-	#ifdef BENCHMARK_BUILD_HISTOGRAMS
+	#if defined(BENCHMARK_CPU_LSD_RADIX_SORT)
+	// TODO: to be implemented
+	#endif
+
+	#if defined(BENCHMARK_BLOCK_PREFIX_SUM)
+	// TODO: to be implemented
+	#endif
+
+	#if defined(BENCHMARK_GPU_PREFIX_SUM)
+	BenchmarkGPUPrefixSum();
+	#endif
+
+	#if defined(BENCHMARK_LSD_BINARY_RADIX_SORT)
+	// TODO: to be implemented
+	#endif
+
+	#if defined(BENCHMARK_TRANSPOSE)
+	// TODO: to be implemented
+	#endif
+
+	#if defined(BENCHMARK_BUILD_HISTOGRAMS)
 	BenchmarkBuildHistogram();
-	#else
+	#endif
+
+	#if defined(BENCHMARK_GPU_LSD_RADIX_SORT)
+	// TODO: to be implemented
+	#endif
+
 	TestSequentialLSDRadixSort();
 	TestBlockPrefixSumKernel();
 	TestGPUPrefixSum(PREFIX_SUM_TEST_ELEMS_COUNT, PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK, PREFIX_SUM_TEST_ELEMS_MIN, PREFIX_SUM_TEST_ELEMS_MAX);
@@ -1143,7 +1161,6 @@ int main()
 	TestTranspose();
 	TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
 	TestGPULSDRadixSort();
-	#endif
 
 	return 0;
 }
