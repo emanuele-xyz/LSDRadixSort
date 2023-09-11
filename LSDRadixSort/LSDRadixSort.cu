@@ -1025,14 +1025,14 @@ void TestGPULSDRadixSort(int count, int block, int r, uint32_t min, uint32_t max
 }
 
 //constexpr int elems_count = 4;
-constexpr int elems_count = 2;
+constexpr int elems_count = 1;
 int elems[elems_count] =
 {
 	//1024 * 1024 * 32,
 	//1024 * 1024 * 64,
 	//1024 * 1024 * 128,
 	//1024 * 1024 * 256,
-	1024 * 1024 * 512,
+	//1024 * 1024 * 512,
 	1024 * 1024 * 1024,
 };
 
