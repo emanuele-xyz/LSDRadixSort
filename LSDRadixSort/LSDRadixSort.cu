@@ -23,6 +23,37 @@
 #include "Utils.h"
 #include "CudaUtils.h"
 
+void LSDRadixSortPass(uint32_t* in, uint32_t* out, int count, uint32_t* histogram, int r, int bit_group)
+{
+	memset(histogram, 0, sizeof(*histogram) * (1 << r));
+
+	// build histogram
+	for (int j = 0; j < count; j++)
+	{
+		uint32_t val = in[j];
+		int key = GET_R_BITS(val, r, bit_group);
+		histogram[key]++;
+	}
+
+	// prefix sum of histogram
+	for (int j = 1; j < (1 << r); j++)
+	{
+		histogram[j] += histogram[j - 1];
+	}
+
+	// permute input elements into output
+	for (int j = count - 1; j >= 0; j--)
+	{
+		uint32_t val = in[j];
+		int key = GET_R_BITS(val, r, bit_group);
+		histogram[key]--;
+		out[histogram[key]] = val;
+	}
+
+	// copy output array into input array
+	memcpy(in, out, sizeof(*in) * count);
+}
+
 /*
 * in:    input array (will be modified)
 * out:   output array
@@ -31,36 +62,10 @@
 */
 void LSDRadixSort(uint32_t* in, uint32_t* out, int count, uint32_t* histogram, int r)
 {
-	int iterations = (sizeof(*in) * 8) / r;
-	for (int i = 0; i < iterations; i++)
+	int bit_groups = (sizeof(*in) * 8) / r;
+	for (int bit_group = 0; bit_group < bit_groups; bit_group++)
 	{
-		memset(histogram, 0, sizeof(*histogram) * (1 << r));
-
-		// build histogram
-		for (int j = 0; j < count; j++)
-		{
-			uint32_t val = in[j];
-			int key = GET_R_BITS(val, r, i);
-			histogram[key]++;
-		}
-
-		// prefix sum of histogram
-		for (int j = 1; j < (1 << r); j++)
-		{
-			histogram[j] += histogram[j - 1];
-		}
-
-		// permute input elements into output
-		for (int j = count - 1; j >= 0; j--)
-		{
-			uint32_t val = in[j];
-			int key = GET_R_BITS(val, r, i);
-			histogram[key]--;
-			out[histogram[key]] = val;
-		}
-
-		// copy output array into input array
-		memcpy(in, out, sizeof(*in) * count);
+		LSDRadixSortPass(in, out, count, histogram, r, bit_group);
 	}
 }
 
@@ -77,7 +82,7 @@ void PrefixSum(uint32_t* a, int count)
 	a[0] = 0;
 }
 
-__device__ void SMEMUpSweep(uint32_t* smem, int bdim, int tid)
+__device__ void SMEMUpSweep(volatile uint32_t* smem, int bdim, int tid)
 {
 	for (int d = 0; (1 << d) < bdim; d++)
 	{
@@ -95,7 +100,7 @@ __device__ void SMEMUpSweep(uint32_t* smem, int bdim, int tid)
 	}
 }
 
-__device__ void SMEMDownSweep(uint32_t* smem, int bdim, int tid)
+__device__ void SMEMDownSweep(volatile uint32_t* smem, int bdim, int tid)
 {
 	for (int d = 0; (1 << d) < bdim; d++)
 	{
@@ -380,7 +385,7 @@ void TestGPUPrefixSum(int count, int threads_per_block, int min, int max)
 	CUDA_CALL(cudaFreeHost(h_a));
 }
 
-__device__ void SMEMLSDBinaryRadixSort(uint32_t* a, int tid, int bdim, int first_bit = 0, int bit_count = 32)
+__device__ void SMEMLSDBinaryRadixSort(volatile uint32_t* a, int tid, int bdim, int first_bit = 0, int bit_count = 32)
 {
 	// passes
 	for (int i = first_bit; i < first_bit + bit_count; i++)
@@ -411,20 +416,23 @@ __device__ void SMEMLSDBinaryRadixSort(uint32_t* a, int tid, int bdim, int first
 	}
 }
 
-__global__ void LSDBinaryRadixSortKernel(uint32_t* a)
+__global__ void LSDBinaryRadixSortKernel(uint32_t* a, int first_bit = 0, int bit_count = 32)
 {
 	extern __shared__ uint32_t smem[];
 
 	int tid = threadIdx.x;
+	int bdim = blockDim.x;
+	int bid = blockIdx.x;
+	int idx = bid * bdim + tid;
 
 	// load array in smem
-	smem[tid] = a[tid];
+	smem[tid] = a[idx];
 	__syncthreads();
 
-	SMEMLSDBinaryRadixSort(smem, tid, blockDim.x);
+	SMEMLSDBinaryRadixSort(smem, tid, blockDim.x, first_bit, bit_count);
 
 	// write smem into array
-	a[tid] = smem[tid];
+	a[idx] = smem[tid];
 }
 
 #define LSD_BINARY_RADIX_SORT_TEST_ELEMS_COUNT (1024)
@@ -853,12 +861,7 @@ void BenchmarkBuildHistogram()
 	}
 }
 
-/*
-	a: input array
-	l: local offsets
-	g: global offsets
-*/
-__global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* l, uint32_t* g, int count, int r, int bit_group)
+__global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* b, uint32_t* l, uint32_t* g, int count, int r, int bit_group)
 {
 	extern __shared__ uint32_t smem[];
 
@@ -873,10 +876,9 @@ __global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* l, uint32_t* g, int co
 	float cells_per_thread_ratio = (float)(h_count) / (float)(bdim);
 	int cells_per_thread = cells_per_thread_ratio < 1.0f ? 1 : (int)(cells_per_thread_ratio + 0.5f);
 
-	uint32_t* smem_a = smem;                      // elements
-	uint32_t* smem_d = &smem[bdim];               // destination table
-	uint32_t* smem_l = &smem[bdim * 2];           // local offsets
-	uint32_t* smem_g = &smem[bdim * 2 + h_count]; // global offsets
+	uint32_t* smem_a = smem;                  // elements
+	uint32_t* smem_l = &smem[bdim];           // local offsets
+	uint32_t* smem_g = &smem[bdim + h_count]; // global offsets
 
 	// load data into smem 
 	smem_a[tid] = a[idx];
@@ -894,28 +896,100 @@ __global__ void LSDRadixSortKernel(uint32_t* a, uint32_t* l, uint32_t* g, int co
 
 	// sort smem_a
 	SMEMLSDBinaryRadixSort(smem_a, tid, bdim, bit_group * r, r);
-	// build destination table
+	// compute destination
 	uint32_t val = smem_a[tid];
 	int key = GET_R_BITS(val, r, bit_group);
-	smem_d[tid] = (uint32_t)((int64_t)tid - (int64_t)(smem_l[key]) + (int64_t)(smem_g[key]));
-	__syncthreads();
+	uint32_t dst = (uint32_t)((int64_t)tid - (int64_t)(smem_l[key]) + (int64_t)(smem_g[key]));
 
 	// scatter elements using destination table
-	a[smem_d[tid]] = smem_a[tid];
+	b[dst] = smem_a[tid];
 }
 
-void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, int grid, int block, int block_sums_count, int count, int h_count, int r)
+__global__ void BuildDestinationTableKernel(uint32_t* a, uint32_t* l, uint32_t* g, uint32_t* d, int count, int r, int bit_group)
+{
+	int tid = threadIdx.x;
+	int bdim = blockDim.x;
+	int bid = blockIdx.x;
+	int idx = bid * bdim + tid;
+
+	if (idx > count) return;
+
+	uint32_t val = a[idx];
+	int key = GET_R_BITS(val, r, bit_group);
+	int h_count = (1 << r);
+	d[idx] = (uint32_t)((int64_t)(tid)-(int64_t)(l[bid * h_count + key]) + (int64_t)(g[bid * h_count + key]));
+}
+
+__global__ void ScatterKernel(uint32_t* a, uint32_t* b, uint32_t* d, int count)
+{
+	int tid = threadIdx.x;
+	int bdim = blockDim.x;
+	int bid = blockIdx.x;
+	int idx = bid * bdim + tid;
+
+	if (idx > count) return;
+
+	uint32_t val = a[idx];
+	uint32_t dst = d[idx];
+	b[dst] = val;
+}
+
+//#define LSD_RADIX_SORT_DBG_PRINT
+//#define LSD_RADIX_SORT_VALIDATE
+#define LSD_RADIX_SORT_NAIVE
+
+void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums, uint32_t* d, int grid, int block, int block_sums_count, int count, int h_count, int r)
 {
 	cudaStream_t s1 = MyCudaStreamCreate();
 	cudaStream_t s2 = MyCudaStreamCreate();
 
+	#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
+	auto tmp_a = new uint32_t[count];
+	auto tmp_b = new uint32_t[count];
+	auto tmp_d = new uint32_t[count];
+	auto tmp_h = new uint32_t[h_count * grid];
+	auto tmp_l = new uint32_t[h_count * grid];
+	auto tmp_g = new uint32_t[h_count * grid];
+	#endif
+
+	#if defined(LSD_RADIX_SORT_VALIDATE)
+	auto tmp_a0 = new uint32_t[count];
+	auto tmp_a1 = new uint32_t[count];
+	auto tmp_d0 = new uint32_t[count];
+	auto tmp_h0 = new uint32_t[h_count * grid];
+	auto tmp_h1 = new uint32_t[h_count];
+	auto tmp_l0 = new uint32_t[h_count * grid];
+	auto tmp_g0 = new uint32_t[h_count * grid];
+	auto tmp_g1 = new uint32_t[h_count * grid];
+	#endif
+
 	int bit_groups = (sizeof(*a) * 8) / r;
 	for (int bit_group = 0; bit_group < bit_groups; bit_group++)
 	{
+		#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
+		CUDA_CALL(cudaMemcpy(tmp_a, a, count * sizeof(uint32_t), cudaMemcpyDeviceToHost));
+		memcpy(tmp_a0, tmp_a, count * sizeof(uint32_t));
+		#endif
+		#if defined(LSD_RADIX_SORT_DBG_PRINT)
+		std::cout << "bit group: " << bit_group << std::endl;
+		PrintArray('a', tmp_a, count);
+		#endif
+
 		// Build histogram
 		{
 			size_t smem = h_count * sizeof(uint32_t);
 			BuildHistogramsKernel << <grid, block, smem >> > (a, h, count, r, bit_group);
+			#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
+			CUDA_CALL(cudaMemcpy(tmp_h, h, h_count * grid * sizeof(uint32_t), cudaMemcpyDeviceToHost));
+			#endif
+			#if defined(LSD_RADIX_SORT_VALIDATE)
+			memset(tmp_h0, 0, h_count * grid * sizeof(uint32_t));
+			BuildHistogramsCPU(tmp_a, tmp_h0, count, r, bit_group, grid, block);
+			CheckArrays(tmp_h0, tmp_h, h_count * grid);
+			#endif
+			#if defined(LSD_RADIX_SORT_DBG_PRINT)
+			PrintArray('h', tmp_h, h_count * grid);
+			#endif
 		}
 
 		// Build local and global offsets
@@ -935,6 +1009,20 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, int grid, i
 				int h_grid = (h_total_count + h_block - 1) / h_block;
 				size_t h_smem = h_block * sizeof(uint32_t);
 				BlockPrefixSumKernel << <h_grid, h_block, h_smem, s1 >> > (local_offsets, nullptr);
+				#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
+				CUDA_CALL(cudaMemcpy(tmp_l, local_offsets, h_count * grid * sizeof(uint32_t), cudaMemcpyDeviceToHost));
+				#endif
+				#if defined(LSD_RADIX_SORT_VALIDATE)
+				memcpy(tmp_l0, tmp_h0, h_count * grid * sizeof(uint32_t));
+				for (int g = 0; g < h_grid; g++)
+				{
+					PrefixSum(tmp_l0 + g * h_block, h_block);
+				}
+				CheckArrays(tmp_l0, tmp_l, h_count * grid);
+				#endif
+				#if defined(LSD_RADIX_SORT_DBG_PRINT)
+				PrintArray('l', tmp_l, h_count * grid);
+				#endif
 			}
 
 			// Build global offsets
@@ -946,6 +1034,8 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, int grid, i
 					dim3 t_block(block_dim, block_dim);
 					dim3 t_grid((cols + block_dim - 1) / block_dim, (rows + block_dim - 1) / block_dim);
 					size_t t_smem = block_dim * block_dim * sizeof(uint32_t);
+					// NOTE: this fails on inputs greater than 1GB because of invalid configuration grid.y > 65535
+					// NOTE: https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications
 					TransposeSMEMKernel << <t_grid, t_block, t_smem, s2 >> > (global_offsets, transposed_global_offsets, rows, cols);
 				}
 				GPUPrefixSum(transposed_global_offsets, h_total_count, block, block_sums, s2);
@@ -955,13 +1045,87 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, int grid, i
 					size_t t_smem = block_dim * block_dim * sizeof(uint32_t);
 					TransposeSMEMKernel << <t_grid, t_block, t_smem, s2 >> > (transposed_global_offsets, global_offsets, cols, rows);
 				}
+				#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
+				CUDA_CALL(cudaMemcpy(tmp_g, global_offsets, h_count * grid * sizeof(uint32_t), cudaMemcpyDeviceToHost));
+				#endif
+				#if defined(LSD_RADIX_SORT_VALIDATE)
+				memcpy(tmp_g0, tmp_h0, h_count * grid * sizeof(uint32_t));
+				Transpose(tmp_g0, tmp_g1, rows, cols);
+				PrefixSum(tmp_g1, h_count * grid);
+				Transpose(tmp_g1, tmp_g0, cols, rows);
+				CheckArrays(tmp_g0, tmp_g, h_count * grid);
+				#endif
+				#if defined(LSD_RADIX_SORT_DBG_PRINT)
+				PrintArray('g', tmp_g, h_count * grid);
+				#endif
 			}
 		}
 
 		// Sort
 		{
-			size_t smem = (2 * block + 2 * h_count) * sizeof(uint32_t);
-			LSDRadixSortKernel << <grid, block, smem >> > (a, local_offsets, global_offsets, count, r, bit_group);
+			#if defined(LSD_RADIX_SORT_NAIVE)
+			// Block local sort
+			size_t smem = block * sizeof(uint32_t);
+			int first_bit = bit_group * r;
+			int bit_count = r;
+			LSDBinaryRadixSortKernel << <grid, block, smem >> > (a, first_bit, bit_count);
+			CUDA_CALL(cudaDeviceSynchronize());
+			#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
+			CUDA_CALL(cudaMemcpy(tmp_a, a, count * sizeof(uint32_t), cudaMemcpyDeviceToHost));
+			#endif
+			#if defined(LSD_RADIX_SORT_VALIDATE)
+			for (int g = 0; g < grid; g++)
+			{
+				LSDRadixSortPass(tmp_a0 + g * block, tmp_a1 + g * block, block, tmp_h1, r, bit_group);
+			}
+			CheckArrays(tmp_a1, tmp_a, count);
+			#endif
+			#if defined(LSD_RADIX_SORT_DBG_PRINT)
+			PrintArray('a', tmp_a, count);
+			#endif
+
+			// Build destination table
+			BuildDestinationTableKernel << <grid, block >> > (a, local_offsets, global_offsets, d, count, r, bit_group);
+			#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
+			CUDA_CALL(cudaMemcpy(tmp_d, d, count * sizeof(uint32_t), cudaMemcpyDeviceToHost));
+			#endif
+			#if defined(LSD_RADIX_SORT_VALIDATE)
+			for (int i = 0; i < count; i++)
+			{
+				int bid = i / block;
+				int tid = i % block;
+				uint32_t val = tmp_a1[i];
+				int key = GET_R_BITS(val, r, bit_group);
+				tmp_d0[i] = (uint32_t)((int64_t)(tid)-(int64_t)(tmp_l[bid * h_count + key]) + (int64_t)(tmp_g[bid * h_count + key]));
+			}
+			CheckArrays(tmp_d0, tmp_d, count);
+			#endif
+			#if defined(LSD_RADIX_SORT_DBG_PRINT)
+			PrintArray('d', tmp_d, count);
+			#endif
+
+			// Scatter
+			ScatterKernel << <grid, block >> > (a, b, d, count);
+			#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
+			CUDA_CALL(cudaMemcpy(tmp_b, b, count * sizeof(uint32_t), cudaMemcpyDeviceToHost));
+			#endif
+			#if defined(LSD_RADIX_SORT_VALIDATE)
+			for (int i = 0; i < count; i++)
+			{
+				tmp_a0[tmp_d0[i]] = tmp_a1[i];
+			}
+			CheckArrays(tmp_a0, tmp_b, count);
+			#endif
+			#if defined(LSD_RADIX_SORT_DBG_PRINT)
+			PrintArray('b', tmp_b, count);
+			#endif
+
+			#else
+			size_t smem = (block + 2 * h_count) * sizeof(uint32_t);
+			LSDRadixSortKernel << <grid, block, smem >> > (a, b, local_offsets, global_offsets, count, r, bit_group);
+			#endif
+
+			std::swap(a, b);
 		}
 	}
 
@@ -969,7 +1133,7 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* h, uint32_t* block_sums, int grid, i
 	CUDA_CALL(cudaStreamDestroy(s1));
 }
 
-#define GPU_LSD_SORT_TEST_COUNT (1024 * 3)
+#define GPU_LSD_SORT_TEST_COUNT (1024 * 1024 * 256)
 #define GPU_LSD_SORT_TEST_BLOCK_DIM (256)
 #define GPU_LSD_SORT_TEST_R (4)
 #define GPU_LSD_SORT_TEST_MIN 0
@@ -982,7 +1146,6 @@ void TestGPULSDRadixSort()
 	std::cout << "-- Test GPU LSD Radix Sort --" << std::endl;
 	#endif
 
-	// TODO: r cannot be larger than 10 because
 	int r = GPU_LSD_SORT_TEST_R;
 	int count = GPU_LSD_SORT_TEST_COUNT;
 	int block = GPU_LSD_SORT_TEST_BLOCK_DIM;
@@ -1041,6 +1204,8 @@ void TestGPULSDRadixSort()
 	uint32_t* h = (uint32_t*)calloc(h_count, sizeof(*h));
 	uint32_t* h_a = (uint32_t*)MyCudaHostAlloc(size);
 	uint32_t* d_a = (uint32_t*)MyCudaMalloc(size);
+	uint32_t* d_b = (uint32_t*)MyCudaMalloc(size);
+	uint32_t* d_d = (uint32_t*)MyCudaMalloc(size);
 	uint32_t* d_h = (uint32_t*)MyCudaMalloc(h_triple_total_size);
 	uint32_t* d_block_sums = (uint32_t*)MyCudaMalloc(block_sums_size);
 
@@ -1070,7 +1235,7 @@ void TestGPULSDRadixSort()
 		cudaEvent_t end = MyCudaEventCreate();
 		CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
 		CUDA_CALL(cudaEventRecord(start));
-		GPULSDRadixSort(d_a, d_h, d_block_sums, grid, block, block_sums_count, count, h_count, r);
+		GPULSDRadixSort(d_a, d_b, d_h, d_block_sums, d_d, grid, block, block_sums_count, count, h_count, r);
 		CUDA_CALL(cudaEventRecord(end));
 		CUDA_CALL(cudaMemcpy(h_a, d_a, size, cudaMemcpyDeviceToHost));
 		gpu_ms = MyCudaEventElapsedTime(start, end);
@@ -1089,6 +1254,8 @@ void TestGPULSDRadixSort()
 	// deallocate
 	CUDA_CALL(cudaFree(d_block_sums));
 	CUDA_CALL(cudaFree(d_h));
+	CUDA_CALL(cudaFree(d_d));
+	CUDA_CALL(cudaFree(d_b));
 	CUDA_CALL(cudaFree(d_a));
 	CUDA_CALL(cudaFreeHost(h_a));
 	free(h);
