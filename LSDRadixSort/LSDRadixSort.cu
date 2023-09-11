@@ -14,8 +14,8 @@
 //#define BENCHMARK_GPU_PREFIX_SUM
 //#define BENCHMARK_LSD_BINARY_RADIX_SORT
 //#define BENCHMARK_TRANSPOSE
-#define BENCHMARK_BUILD_HISTOGRAMS
-//#define BENCHMARK_GPU_LSD_RADIX_SORT
+//#define BENCHMARK_BUILD_HISTOGRAMS
+#define BENCHMARK_GPU_LSD_RADIX_SORT
 
 #define PRINT_TIMINGS
 
@@ -506,18 +506,25 @@ __global__ void TransposeNaiveKernel(uint32_t* a, uint32_t* b, int m, int n)
 	a : m x n matrix
 	b : n x m matrix
 */
-__global__ void TransposeSMEMKernel(uint32_t* a, uint32_t* b, int m, int n)
+__global__ void TransposeSMEMKernel(uint32_t* a, uint32_t* b, int m, int n, bool transpose)
 {
 	extern __shared__ uint32_t smem[];
 
-	int t_i = threadIdx.y;
-	int t_j = threadIdx.x;
-	int t_cols = blockDim.x;
-	int t_rows = blockDim.y;
-	int a_i = blockIdx.y * blockDim.y + t_i;
-	int a_j = blockIdx.x * blockDim.x + t_j;
-	int b_i = blockIdx.x * blockDim.x + t_i;
-	int b_j = blockIdx.y * blockDim.y + t_j;
+	int tid_x = transpose ? threadIdx.y : threadIdx.x;
+	int tid_y = transpose ? threadIdx.x : threadIdx.y;
+	int bid_x = transpose ? blockIdx.y : blockIdx.x;
+	int bid_y = transpose ? blockIdx.x : blockIdx.y;
+	int bdim_x = transpose ? blockDim.y : blockDim.x;
+	int bdim_y = transpose ? blockDim.x : blockDim.y;
+
+	int t_i = tid_y;
+	int t_j = tid_x;
+	int t_cols = bdim_x;
+	int t_rows = bdim_y;
+	int a_i = bid_y * bdim_y + t_i;
+	int a_j = bid_x * bdim_x + t_j;
+	int b_i = bid_x * bdim_x + t_i;
+	int b_j = bid_y * bdim_y + t_j;
 
 	// copy matrix block into smem
 	if (a_i < m && a_j < n)
@@ -601,7 +608,7 @@ void TestTranspose(int m, int n, uint32_t min, uint32_t max)
 		dim3 block(block_dim, block_dim);
 		dim3 grid((n + block_dim - 1) / block_dim, (m + block_dim - 1) / block_dim);
 		size_t smem = block_dim * block_dim * sizeof(uint32_t);
-		TransposeSMEMKernel << <grid, block, smem >> > (d_a, d_b, m, n);
+		TransposeSMEMKernel << <grid, block, smem >> > (d_a, d_b, m, n, false);
 		CUDA_CALL(cudaEventRecord(end));
 		CUDA_CALL(cudaMemcpy(h_c, d_b, size, cudaMemcpyDeviceToHost));
 		gpu_smem_ms = MyCudaEventElapsedTime(start, end);
@@ -867,17 +874,21 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 				{
 					dim3 t_block(block_dim, block_dim);
 					dim3 t_grid((cols + block_dim - 1) / block_dim, (rows + block_dim - 1) / block_dim);
+					bool transpose = t_grid.x < t_grid.y;
+					if (transpose) std::swap(t_grid.x, t_grid.y);
 					size_t t_smem = block_dim * block_dim * sizeof(uint32_t);
 					// NOTE: this fails on inputs greater than 1GB because of invalid configuration grid.y > 65535
 					// NOTE: https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications
-					TransposeSMEMKernel << <t_grid, t_block, t_smem, s2 >> > (global_offsets, transposed_global_offsets, rows, cols);
+					TransposeSMEMKernel << <t_grid, t_block, t_smem, s2 >> > (global_offsets, transposed_global_offsets, rows, cols, transpose);
 				}
 				GPUPrefixSum(transposed_global_offsets, h_total_count, block, block_sums, s2);
 				{
 					dim3 t_block(block_dim, block_dim);
 					dim3 t_grid((rows + block_dim - 1) / block_dim, (cols + block_dim - 1) / block_dim);
+					bool transpose = t_grid.x < t_grid.y;
+					if (transpose) std::swap(t_grid.x, t_grid.y);
 					size_t t_smem = block_dim * block_dim * sizeof(uint32_t);
-					TransposeSMEMKernel << <t_grid, t_block, t_smem, s2 >> > (transposed_global_offsets, global_offsets, cols, rows);
+					TransposeSMEMKernel << <t_grid, t_block, t_smem, s2 >> > (transposed_global_offsets, global_offsets, cols, rows, transpose);
 				}
 			}
 		}
@@ -895,22 +906,13 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 	CUDA_CALL(cudaStreamDestroy(s1));
 }
 
-#define GPU_LSD_SORT_TEST_COUNT (1024 * 1024 * 256)
-#define GPU_LSD_SORT_TEST_BLOCK_DIM (256)
-#define GPU_LSD_SORT_TEST_R (4)
-#define GPU_LSD_SORT_TEST_MIN 0
-#define GPU_LSD_SORT_TEST_MAX 10
-
-void TestGPULSDRadixSort()
+void TestGPULSDRadixSort(int count, int block, int r, uint32_t min, uint32_t max)
 {
 	// print header
 	#ifdef PRINT_TIMINGS
 	std::cout << "-- Test GPU LSD Radix Sort --" << std::endl;
 	#endif
 
-	int r = GPU_LSD_SORT_TEST_R;
-	int count = GPU_LSD_SORT_TEST_COUNT;
-	int block = GPU_LSD_SORT_TEST_BLOCK_DIM;
 	int grid = (count + block - 1) / block;
 	int h_count = (1 << r);
 	int h_total_count = h_count * grid;
@@ -968,7 +970,7 @@ void TestGPULSDRadixSort()
 	uint32_t* d_block_sums = (uint32_t*)MyCudaMalloc(block_sums_size);
 
 	// populate input
-	RNG rng = RNG(0, GPU_LSD_SORT_TEST_MIN, GPU_LSD_SORT_TEST_MAX);
+	RNG rng = RNG(0, min, max);
 	for (int i = 0; i < count; i++) a[i] = rng.Get();
 	memcpy(h_a, a, size);
 
@@ -1125,17 +1127,19 @@ void BenchmarkBuildHistogram()
 	}
 }
 
-#define PREFIX_SUM_TEST_ELEMS_COUNT (1024 * 1024)
-#define PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK (128)
-#define PREFIX_SUM_TEST_ELEMS_MIN 0
-#define PREFIX_SUM_TEST_ELEMS_MAX 10
-
-#define BUILD_HISTOGRAM_TEST_ELEMS_COUNT (1024 * 1024)
-#define BUILD_HISTOGRAM_TEST_BLOCK_DIM (256)
-#define BUILD_HISTOGRAM_TEST_MIN 0
-#define BUILD_HISTOGRAM_TEST_MAX 10
-#define BUILD_HISTOGRAM_TEST_BIT_GROUP 0
-#define BUILD_HISTOGRAM_TEST_R 4
+void BenchmarkGPULSDRadixSort()
+{
+	for (int i = 0; i < elems_count; i++)
+	{
+		for (int j = 0; j < blocks_count; j++)
+		{
+			for (int k = 0; k < rs_count; k++)
+			{
+				TestGPULSDRadixSort(elems[i], blocks[j], rs[k], 0, UINT32_MAX);
+			}
+		}
+	}
+}
 
 int main()
 {
@@ -1166,11 +1170,8 @@ int main()
 	#endif
 
 	#if defined(BENCHMARK_GPU_LSD_RADIX_SORT)
-	// TODO: to be implemented
+	BenchmarkGPULSDRadixSort();
 	#endif
-
-	//TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
-	//TestGPULSDRadixSort();
 
 	return 0;
 }
