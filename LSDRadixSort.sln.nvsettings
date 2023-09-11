@@ -1,2 +1,2 @@
 [WarpWatch]
-Expressions=idx, value, destination
+Expressions=t_i, t_j, a[800]

@@ -562,6 +562,41 @@ __global__ void TransposeSMEMKernel(uint32_t* a, uint32_t* b, int m, int n)
 	}
 }
 
+__global__ void TransposeSMEM1DKernel(uint32_t* a, uint32_t* b, int m, int n)
+{
+	extern __shared__ uint32_t smem[];
+
+	int tid = threadIdx.x;
+	int bid = blockIdx.x;
+	int bdim = blockDim.x;
+	int idx = bid * bdim + tid;
+
+	int block = (int)sqrt((float)bdim);
+	int t_i = tid / block;
+	int t_j = tid % block;
+	int t_cols = block;
+	int t_rows = block;
+	int bid_x = bid % block;
+	int bid_y = bid / block;
+	int a_i = bid_y * block + t_i;
+	int a_j = bid_x * block + t_j;
+	int b_i = bid_x * block + t_i;
+	int b_j = bid_y * block + t_j;
+
+	// copy matrix block into smem
+	if (a_i < m && a_j < n)
+	{
+		smem[t_i * t_cols + t_j] = a[a_i * n + a_j];
+	}
+	__syncthreads();
+
+	// write transposed smem block
+	if (b_i < n && b_j < m)
+	{
+		b[b_i * m + b_j] = smem[t_j * t_rows + t_i];
+	}
+}
+
 #define TRANSPOSE_TEST_M (128)
 #define TRANSPOSE_TEST_N (32)
 #define TRANSPOSE_TEST_BLOCK_DIM 32
@@ -649,6 +684,31 @@ void TestTranspose()
 	// print timings
 	#ifdef PRINT_TIMINGS
 	std::cout << "GPU SMEM Transpose: " << gpu_smem_ms << " ms - Speedup: x" << sequential_ms / gpu_smem_ms << std::endl;
+	#endif
+
+	// check matrices
+	CheckArrays(h_b, h_c, count);
+
+	float gpu_smem_1D_ms = 0.0f;
+	{
+		cudaEvent_t start = MyCudaEventCreate();
+		cudaEvent_t end = MyCudaEventCreate();
+		CUDA_CALL(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
+		CUDA_CALL(cudaEventRecord(start));
+		int block = block_dim * block_dim;
+		int grid = (n * m + block - 1) / block;
+		size_t smem = block * sizeof(uint32_t);
+		TransposeSMEM1DKernel << <grid, block, smem >> > (d_a, d_b, m, n);
+		CUDA_CALL(cudaEventRecord(end));
+		CUDA_CALL(cudaMemcpy(h_c, d_b, size, cudaMemcpyDeviceToHost));
+		gpu_smem_1D_ms = MyCudaEventElapsedTime(start, end);
+		CUDA_CALL(cudaEventDestroy(end));
+		CUDA_CALL(cudaEventDestroy(start));
+	}
+
+	// print timings
+	#ifdef PRINT_TIMINGS
+	std::cout << "GPU SMEM 1D Transpose: " << gpu_smem_1D_ms << " ms - Speedup: x" << sequential_ms / gpu_smem_1D_ms << std::endl;
 	#endif
 
 	// check matrices
@@ -1031,19 +1091,17 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 				int cols = h_count;
 				int block_dim = 32;
 				{
-					dim3 t_block(block_dim, block_dim);
-					dim3 t_grid((cols + block_dim - 1) / block_dim, (rows + block_dim - 1) / block_dim);
-					size_t t_smem = block_dim * block_dim * sizeof(uint32_t);
-					// TODO: https://github.com/pytorch/pytorch/issues/49928
-					// NOTE: https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications
-					TransposeSMEMKernel << <t_grid, t_block, t_smem, s2 >> > (global_offsets, transposed_global_offsets, rows, cols);
+					int t_block = block_dim * block_dim;
+					int t_grid = (cols * rows + t_block - 1) / t_block;
+					size_t t_smem = block * sizeof(uint32_t);
+					TransposeSMEM1DKernel << <t_grid, t_block, t_smem, s2 >> > (global_offsets, transposed_global_offsets, rows, cols);
 				}
 				GPUPrefixSum(transposed_global_offsets, h_total_count, block, block_sums, s2);
 				{
-					dim3 t_block(block_dim, block_dim);
-					dim3 t_grid((rows + block_dim - 1) / block_dim, (cols + block_dim - 1) / block_dim);
-					size_t t_smem = block_dim * block_dim * sizeof(uint32_t);
-					TransposeSMEMKernel << <t_grid, t_block, t_smem, s2 >> > (transposed_global_offsets, global_offsets, cols, rows);
+					int t_block = block_dim * block_dim;
+					int t_grid = (cols * rows + t_block - 1) / t_block;
+					size_t t_smem = block * sizeof(uint32_t);
+					TransposeSMEM1DKernel << <t_grid, t_block, t_smem, s2 >> > (transposed_global_offsets, global_offsets, cols, rows);
 				}
 				#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
 				CUDA_CALL(cudaMemcpy(tmp_g, global_offsets, h_count * grid * sizeof(uint32_t), cudaMemcpyDeviceToHost));
@@ -1069,7 +1127,6 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 			int first_bit = bit_group * r;
 			int bit_count = r;
 			LSDBinaryRadixSortKernel << <grid, block, smem >> > (a, first_bit, bit_count);
-			CUDA_CALL(cudaDeviceSynchronize());
 			#if defined(LSD_RADIX_SORT_DBG_PRINT) || defined(LSD_RADIX_SORT_VALIDATE)
 			CUDA_CALL(cudaMemcpy(tmp_a, a, count * sizeof(uint32_t), cudaMemcpyDeviceToHost));
 			#endif
