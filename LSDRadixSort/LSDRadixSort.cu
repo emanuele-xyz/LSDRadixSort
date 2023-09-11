@@ -11,8 +11,8 @@
 
 //#define BENCHMARK_CPU_LSD_RADIX_SORT
 //#define BENCHMARK_BLOCK_PREFIX_SUM
-#define BENCHMARK_GPU_PREFIX_SUM
-//#define BENCHMARK_LSD_BINARY_RADIX_SORT
+//#define BENCHMARK_GPU_PREFIX_SUM
+#define BENCHMARK_LSD_BINARY_RADIX_SORT
 //#define BENCHMARK_TRANSPOSE
 //#define BENCHMARK_BUILD_HISTOGRAMS
 //#define BENCHMARK_GPU_LSD_RADIX_SORT
@@ -417,26 +417,20 @@ __global__ void LSDBinaryRadixSortKernel(uint32_t* a, int first_bit = 0, int bit
 	a[idx] = smem[tid];
 }
 
-#define LSD_BINARY_RADIX_SORT_TEST_ELEMS_COUNT (1024)
-#define LSD_BINARY_RADIX_SORT_TEST_ELEMS_MIN 0
-#define LSD_BINARY_RADIX_SORT_TEST_ELEMS_MAX UINT32_MAX
-
-void TestLSDBinaryRadixSort()
+void TestLSDBinaryRadixSort(int count, uint32_t min, uint32_t max)
 {
 	#ifdef PRINT_TIMINGS
 	std::cout << "-- Test LSD Binary Radix Sort --" << std::endl;
 	#endif
 
-	RNG rng = RNG(0, LSD_BINARY_RADIX_SORT_TEST_ELEMS_MIN, LSD_BINARY_RADIX_SORT_TEST_ELEMS_MAX);
-
 	// allocate
-	int count = LSD_BINARY_RADIX_SORT_TEST_ELEMS_COUNT;
 	size_t size = count * sizeof(uint32_t);
 	uint32_t* h_a = (uint32_t*)MyCudaHostAlloc(size);
 	uint32_t* h_b = (uint32_t*)MyCudaHostAlloc(size);
 	uint32_t* d_a = (uint32_t*)MyCudaMalloc(size);
 
 	// populate input
+	RNG rng = RNG(0, min, max);
 	for (int i = 0; i < count; i++) h_a[i] = rng.Get();
 
 	// parallel lsd binary radix sort
@@ -463,16 +457,11 @@ void TestLSDBinaryRadixSort()
 		std_sort_ms = GetElapsedMS(start, end);
 	}
 
-	// print arrays
-	#ifdef PRINT_ARRAY
-	PrintArray('a', h_a, count);
-	PrintArray('b', h_b, count);
-	#endif
-
 	// print timings
 	#ifdef PRINT_TIMINGS
 	std::cout << "STD Sort: " << std_sort_ms << " ms" << std::endl;
-	std::cout << "Parallel LSD Binary Radix Sort: " << parallel_lsd_binary_radix_sort_ms << " ms" << std::endl;
+	std::cout << "LSD Binary Radix Sort: " << parallel_lsd_binary_radix_sort_ms << " ms" << std::endl;
+	std::cout << "Speedup: x" << std_sort_ms / parallel_lsd_binary_radix_sort_ms << std::endl;
 	#endif
 
 	// check arrays
@@ -1097,6 +1086,14 @@ void BenchmarkGPUPrefixSum()
 	}
 }
 
+void BenchmarkLSDBinaryRadixSort()
+{
+	for (int i = 0; i < blocks_count; i++)
+	{
+		TestLSDBinaryRadixSort(blocks[i], 0, UINT32_MAX);
+	}
+}
+
 void BenchmarkBuildHistogram()
 {
 	for (int c_i = 0; c_i < elems_count; c_i++)
@@ -1141,7 +1138,7 @@ int main()
 	#endif
 
 	#if defined(BENCHMARK_LSD_BINARY_RADIX_SORT)
-	// TODO: to be implemented
+	BenchmarkLSDBinaryRadixSort();
 	#endif
 
 	#if defined(BENCHMARK_TRANSPOSE)
@@ -1156,8 +1153,6 @@ int main()
 	// TODO: to be implemented
 	#endif
 
-	//TestGPUPrefixSum(PREFIX_SUM_TEST_ELEMS_COUNT, PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK, PREFIX_SUM_TEST_ELEMS_MIN, PREFIX_SUM_TEST_ELEMS_MAX);
-	//TestLSDBinaryRadixSort();
 	//TestTranspose();
 	//TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
 	//TestGPULSDRadixSort();
