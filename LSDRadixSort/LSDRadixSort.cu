@@ -9,16 +9,13 @@
 #include "Utils.h"
 #include "CudaUtils.h"
 
-#define BENCHMARK_ALL
-#if defined(BENCHMARK_ALL)
 #define BENCHMARK_CPU_LSD_RADIX_SORT
-#define BENCHMARK_BLOCK_PREFIX_SUM
-#define BENCHMARK_GPU_PREFIX_SUM
-#define BENCHMARK_LSD_BINARY_RADIX_SORT
-#define BENCHMARK_TRANSPOSE
-#define BENCHMARK_BUILD_HISTOGRAMS
-#define BENCHMARK_GPU_LSD_RADIX_SORT
-#endif
+//#define BENCHMARK_BLOCK_PREFIX_SUM
+//#define BENCHMARK_GPU_PREFIX_SUM
+//#define BENCHMARK_LSD_BINARY_RADIX_SORT
+//#define BENCHMARK_TRANSPOSE
+//#define BENCHMARK_BUILD_HISTOGRAMS
+//#define BENCHMARK_GPU_LSD_RADIX_SORT
 
 #define PRINT_TIMINGS
 
@@ -66,6 +63,63 @@ void LSDRadixSort(uint32_t* in, uint32_t* out, int count, uint32_t* histogram, i
 	{
 		LSDRadixSortPass(in, out, count, histogram, r, bit_group);
 	}
+}
+
+void TestSequentialLSDRadixSort(int count, int r, int min, int max)
+{
+	#ifdef PRINT_TIMINGS
+	std::cout << "-- Test CPU LSD radix sort --" << std::endl;
+	std::cout << "R: " << r << std::endl;
+	std::cout << "Sorting " << (double)(count * sizeof(uint32_t)) / (1024.0 * 1024.0 * 1024.0) << " GB of data" << std::endl;
+	#endif
+
+	uint32_t* a = (uint32_t*)(calloc(count, sizeof(*a)));
+	uint32_t* b = (uint32_t*)(calloc(count, sizeof(*b)));
+	uint32_t* c = (uint32_t*)(calloc(count, sizeof(*c)));
+	uint32_t* h = (uint32_t*)(calloc(1 << r, sizeof(*h)));
+
+	// populate a and c
+	RNG rng = RNG(0, min, max);
+	for (int i = 0; i < count; i++)
+	{
+		int elem = rng.Get();
+		a[i] = elem;
+		c[i] = elem;
+	}
+
+	// sort c using standard library sort
+	float std_sort_ms = 0;
+	{
+		int64_t start = GetTimestamp();
+		std::sort(c, c + count);
+		int64_t end = GetTimestamp();
+		std_sort_ms = GetElapsedMS(start, end);
+	}
+
+	#ifdef PRINT_TIMINGS
+	std::cout << "CPU STD Sort: " << std_sort_ms << " ms" << std::endl;
+	#endif
+
+	// sort a writing result in b using LSD radix sort
+	float lsd_radix_sort_ms = 0;
+	{
+		int64_t start = GetTimestamp();
+		LSDRadixSort(a, b, count, h, r);
+		int64_t end = GetTimestamp();
+		lsd_radix_sort_ms = GetElapsedMS(start, end);
+	}
+
+	#ifdef PRINT_TIMINGS
+	std::cout << "CPU LSD Radix Sort: " << lsd_radix_sort_ms << " ms " << std::endl;
+	std::cout << "Speedup: x" << std_sort_ms / lsd_radix_sort_ms << std::endl;
+	#endif
+
+	CheckArrays(b, c, count);
+
+	free(h);
+	free(c);
+	free(b);
+	free(a);
 }
 
 void PrefixSum(uint32_t* a, int count)
@@ -149,70 +203,6 @@ __global__ void BlockPrefixSumKernel(uint32_t* a, uint32_t* block_sums)
 	a[i] = smem[tid];
 }
 
-#define SEQ_RADIX_SORT_TEST_ELEMS_COUNT (1024 * 4)
-#define SEQ_RADIX_SORT_TEST_ELEMS_MIN 0
-#define SEQ_RADIX_SORT_TEST_ELEMS_MAX UINT32_MAX
-#define SEQ_RADIX_SORT_TEST_ELEMS_R 4
-
-void TestSequentialLSDRadixSort()
-{
-	#ifdef PRINT_TIMINGS
-	std::cout << "-- Test sequential LSD radix sort --" << std::endl;
-	#endif
-
-	RNG rng = RNG(0, SEQ_RADIX_SORT_TEST_ELEMS_MIN, SEQ_RADIX_SORT_TEST_ELEMS_MAX);
-
-	int count = SEQ_RADIX_SORT_TEST_ELEMS_COUNT;
-	uint32_t* a = (uint32_t*)(calloc(count, sizeof(*a)));
-	uint32_t* b = (uint32_t*)(calloc(count, sizeof(*b)));
-	uint32_t* c = (uint32_t*)(calloc(count, sizeof(*c)));
-	uint32_t* h = (uint32_t*)(calloc(1 << SEQ_RADIX_SORT_TEST_ELEMS_R, sizeof(*h)));
-
-	// populate a and c
-	for (int i = 0; i < count; i++)
-	{
-		int elem = rng.Get();
-		a[i] = elem;
-		c[i] = elem;
-	}
-
-	// sort a writing result in b using LSD radix sort
-	float lsd_radix_sort_ms = 0;
-	{
-		int64_t start = GetTimestamp();
-		LSDRadixSort(a, b, count, h, SEQ_RADIX_SORT_TEST_ELEMS_R);
-		int64_t end = GetTimestamp();
-		lsd_radix_sort_ms = GetElapsedMS(start, end);
-	}
-
-	// sort c using standard library sort
-	float std_sort_ms = 0;
-	{
-		int64_t start = GetTimestamp();
-		std::sort(c, c + count);
-		int64_t end = GetTimestamp();
-		std_sort_ms = GetElapsedMS(start, end);
-	}
-
-	#ifdef PRINT_ARRAY
-	PrintArray('b', b, count);
-	PrintArray('c', c, count);
-	#endif
-
-	#ifdef PRINT_TIMINGS
-	std::cout << "Sequential LSD Radix Sort: " << lsd_radix_sort_ms << " ms" << std::endl;
-	std::cout << "Sequential STD Sort: " << std_sort_ms << " ms" << std::endl;
-	std::cout << "Speedup: x" << std_sort_ms / lsd_radix_sort_ms << std::endl;
-	#endif
-
-	CheckArrays(b, c, count);
-
-	free(h);
-	free(c);
-	free(b);
-	free(a);
-}
-
 #define BLOCK_PREFIX_SUM_TEST_ELEMS_COUNT (1024)
 #define BLOCK_PREFIX_SUM_TEST_ELEMS_MIN 0
 #define BLOCK_PREFIX_SUM_TEST_ELEMS_MAX 10
@@ -274,7 +264,7 @@ void TestBlockPrefixSumKernel()
 	CUDA_CALL(cudaFree(d_a));
 	CUDA_CALL(cudaFreeHost(h_b));
 	CUDA_CALL(cudaFreeHost(h_a));
-}
+	}
 
 int GetGPUPrefixSumBlockSumsCount(int count, int threads_per_block)
 {
@@ -1084,6 +1074,17 @@ int rs[rs_count] =
 	8,
 };
 
+void BenchmarkSequentialLSDRadixSort()
+{
+	for (int i = 0; i < elems_count; i++)
+	{
+		for (int j = 0; j < rs_count; j++)
+		{
+			TestSequentialLSDRadixSort(elems[i], rs[j], 0, UINT32_MAX);
+		}
+	}
+}
+
 void BenchmarkGPUPrefixSum()
 {
 	for (int i = 0; i < blocks_count; i++)
@@ -1127,7 +1128,7 @@ int main()
 	CheckForHostLeaks();
 
 	#if defined(BENCHMARK_CPU_LSD_RADIX_SORT)
-	// TODO: to be implemented
+	BenchmarkSequentialLSDRadixSort();
 	#endif
 
 	#if defined(BENCHMARK_BLOCK_PREFIX_SUM)
@@ -1154,13 +1155,12 @@ int main()
 	// TODO: to be implemented
 	#endif
 
-	TestSequentialLSDRadixSort();
-	TestBlockPrefixSumKernel();
-	TestGPUPrefixSum(PREFIX_SUM_TEST_ELEMS_COUNT, PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK, PREFIX_SUM_TEST_ELEMS_MIN, PREFIX_SUM_TEST_ELEMS_MAX);
-	TestLSDBinaryRadixSort();
-	TestTranspose();
-	TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
-	TestGPULSDRadixSort();
+	//TestBlockPrefixSumKernel();
+	//TestGPUPrefixSum(PREFIX_SUM_TEST_ELEMS_COUNT, PREFIX_SUM_TEST_ELEMS_THREADS_PER_BLOCK, PREFIX_SUM_TEST_ELEMS_MIN, PREFIX_SUM_TEST_ELEMS_MAX);
+	//TestLSDBinaryRadixSort();
+	//TestTranspose();
+	//TestBuildHistogram(BUILD_HISTOGRAM_TEST_ELEMS_COUNT, BUILD_HISTOGRAM_TEST_BLOCK_DIM, BUILD_HISTOGRAM_TEST_R, BUILD_HISTOGRAM_TEST_BIT_GROUP, BUILD_HISTOGRAM_TEST_MIN, BUILD_HISTOGRAM_TEST_MAX);
+	//TestGPULSDRadixSort();
 
 	return 0;
 }
