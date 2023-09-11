@@ -13,8 +13,8 @@
 //#define BENCHMARK_BLOCK_PREFIX_SUM
 //#define BENCHMARK_GPU_PREFIX_SUM
 //#define BENCHMARK_LSD_BINARY_RADIX_SORT
-#define BENCHMARK_TRANSPOSE
-//#define BENCHMARK_BUILD_HISTOGRAMS
+//#define BENCHMARK_TRANSPOSE
+#define BENCHMARK_BUILD_HISTOGRAMS
 //#define BENCHMARK_GPU_LSD_RADIX_SORT
 
 #define PRINT_TIMINGS
@@ -585,7 +585,8 @@ void TestTranspose(int m, int n, uint32_t min, uint32_t max)
 	// print timings
 	#ifdef PRINT_TIMINGS
 	std::cout << "CPU: " << sequential_ms << " ms" << std::endl;
-	std::cout << "GPU Naive: " << gpu_naive_ms << " ms - Speedup: x" << sequential_ms / gpu_naive_ms << std::endl;
+	std::cout << "GPU Naive: " << gpu_naive_ms << " ms" << std::endl;
+	std::cout << "Speedup: x" << sequential_ms / gpu_naive_ms << std::endl;
 	#endif
 
 	// check matrices
@@ -610,7 +611,8 @@ void TestTranspose(int m, int n, uint32_t min, uint32_t max)
 
 	// print timings
 	#ifdef PRINT_TIMINGS
-	std::cout << "GPU SMEM: " << gpu_smem_ms << " ms - Speedup: x" << sequential_ms / gpu_smem_ms << std::endl;
+	std::cout << "GPU SMEM: " << gpu_smem_ms << " ms " << std::endl;
+	std::cout << "Speedup: x" << sequential_ms / gpu_smem_ms << std::endl;
 	#endif
 
 	// check matrices
@@ -765,7 +767,8 @@ void TestBuildHistogram(int count, int block, int r, int bit_group, uint32_t min
 
 	// print timings
 	#ifdef PRINT_TIMINGS
-	std::cout << "GPU " << gpu_ms << " ms - Speedup: x" << cpu_ms / gpu_ms << std::endl;
+	std::cout << "GPU " << gpu_ms << " ms" << std::endl;
+	std::cout << "Speedup: x" << cpu_ms / gpu_ms << std::endl;
 	#endif
 
 	// check arrays
@@ -1000,7 +1003,8 @@ void TestGPULSDRadixSort()
 
 	// print timings
 	#ifdef PRINT_TIMINGS
-	std::cout << "GPU " << gpu_ms << " ms - Speedup: x" << cpu_ms / gpu_ms << std::endl;
+	std::cout << "GPU " << gpu_ms << " ms" << std::endl;
+	std::cout << "Speedup: x" << cpu_ms / gpu_ms << std::endl;
 	#endif
 
 	// check arrays
