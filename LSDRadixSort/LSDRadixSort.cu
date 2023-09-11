@@ -10,8 +10,8 @@
 #include "CudaUtils.h"
 
 //#define BENCHMARK_CPU_LSD_RADIX_SORT
-#define BENCHMARK_BLOCK_PREFIX_SUM
-//#define BENCHMARK_GPU_PREFIX_SUM
+//#define BENCHMARK_BLOCK_PREFIX_SUM
+#define BENCHMARK_GPU_PREFIX_SUM
 //#define BENCHMARK_LSD_BINARY_RADIX_SORT
 //#define BENCHMARK_TRANSPOSE
 //#define BENCHMARK_BUILD_HISTOGRAMS
@@ -1088,9 +1088,9 @@ void BenchmarkBlockPrefixSum()
 
 void BenchmarkGPUPrefixSum()
 {
-	for (int i = 0; i < blocks_count; i++)
+	for (int i = 0; i < elems_count; i++)
 	{
-		for (int j = 0; j < elems_count; j++)
+		for (int j = 0; j < blocks_count; j++)
 		{
 			TestGPUPrefixSum(elems[i], blocks[j], 0, UINT32_MAX);
 		}
