@@ -877,8 +877,8 @@ void GPULSDRadixSort(uint32_t* a, uint32_t* b, uint32_t* h, uint32_t* block_sums
 					bool transpose = t_grid.x < t_grid.y;
 					if (transpose) std::swap(t_grid.x, t_grid.y);
 					size_t t_smem = block_dim * block_dim * sizeof(uint32_t);
-					// NOTE: this fails on inputs greater than 1GB because of invalid configuration grid.y > 65535
-					// NOTE: https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications
+					// NOTE: we transpose to avoid invalid grid configuration errors
+					// Read here for details: https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications
 					TransposeSMEMKernel << <t_grid, t_block, t_smem, s2 >> > (global_offsets, transposed_global_offsets, rows, cols, transpose);
 				}
 				GPUPrefixSum(transposed_global_offsets, h_total_count, block, block_sums, s2);
@@ -942,6 +942,8 @@ void TestGPULSDRadixSort(int count, int block, int r, uint32_t min, uint32_t max
 
 		#ifdef BENCHMARK_GPU_LSD_RADIX_SORT
 		return;
+		#else
+		MYCRASH();
 		#endif
 	}
 
