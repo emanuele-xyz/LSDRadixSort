@@ -15,7 +15,7 @@
 //#define BENCHMARK_LSD_BINARY_RADIX_SORT
 //#define BENCHMARK_TRANSPOSE
 //#define BENCHMARK_BUILD_HISTOGRAMS
-#define BENCHMARK_GPU_LSD_RADIX_SORT
+//#define BENCHMARK_GPU_LSD_RADIX_SORT
 
 #define PRINT_TIMINGS
 
@@ -1173,7 +1173,6 @@ int main()
 	#endif
 
 	#if defined(BENCHMARK_GPU_LSD_RADIX_SORT)
-	//TestGPULSDRadixSort(1024 * 1024 * 512, 32, 8, 0, UINT32_MAX);
 	BenchmarkGPULSDRadixSort();
 	#endif
 

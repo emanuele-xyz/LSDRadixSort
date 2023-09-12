@@ -1019,6 +1019,7 @@ R: 8
 CPU 9096.09 ms
 GPU 4111.55 ms
 Speedup: x2.21232
+
 -- Test GPU LSD Radix Sort --
 Elements: 4 GB
 Histograms: 0.75 GB
