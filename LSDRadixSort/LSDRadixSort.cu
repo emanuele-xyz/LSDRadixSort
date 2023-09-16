@@ -15,7 +15,7 @@
 //#define BENCHMARK_LSD_BINARY_RADIX_SORT
 //#define BENCHMARK_TRANSPOSE
 //#define BENCHMARK_BUILD_HISTOGRAMS
-#define BENCHMARK_GPU_LSD_RADIX_SORT
+//#define BENCHMARK_GPU_LSD_RADIX_SORT
 
 #define PRINT_TIMINGS
 
@@ -1033,9 +1033,9 @@ int elems[elems_count] =
 	//1024 * 1024 * 32,
 	//1024 * 1024 * 64,
 	//1024 * 1024 * 128,
-	//1024 * 1024 * 256,
+	1024 * 1024 * 256,
 	//1024 * 1024 * 512,
-	1024 * 1024 * 1024,
+	//1024 * 1024 * 1024,
 };
 
 constexpr int blocks_count = 6;
