@@ -1,8 +1,13 @@
 #include "Utils.h"
 
 #include <iostream>
+
+#if defined(_MSC_VER)
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#else
+#include <time.h>
+#endif
 
 RNG::RNG(unsigned seed, uint32_t min, uint32_t max)
 	: m_engine{ seed }
@@ -11,10 +16,12 @@ RNG::RNG(unsigned seed, uint32_t min, uint32_t max)
 
 void CheckForHostLeaks()
 {
-	// Windows only
+  #if defined(_MSC_VER)
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+  #endif
 }
 
+#if defined(_MSC_VER)
 int64_t GetTimerFrequency()
 {
 	LARGE_INTEGER freq = {};
@@ -35,6 +42,22 @@ float GetElapsedMS(int64_t start, int64_t end)
 	float dt = (float)(end - start) / (float)(frequency);
 	return dt * 1000.0f;
 }
+#else
+int64_t GetTimerFrequency()
+{
+  return (int64_t)(time(NULL));
+}
+
+int64_t GetTimestamp()
+{
+  return (int64_t)(time(NULL));
+}
+
+float GetElapsedMS(int64_t start, int64_t end)
+{
+  return (float)(end - start) * 1000.0f;
+}
+#endif
 
 void CheckArrays(uint32_t* a, uint32_t* b, size_t count)
 {

@@ -1,21 +1,24 @@
 #include <iostream>
+#include <algorithm>
 #include <stdint.h>
-// Windows only
+
+#if defined(_MSC_VER)
 #define _CRTDBG_MAP_ALLOC
 #include <stdlib.h>
 #include <crtdbg.h>
 #include <intrin.h>
+#endif
 
 #include "Utils.h"
 #include "CudaUtils.h"
 
-//#define BENCHMARK_CPU_LSD_RADIX_SORT
-//#define BENCHMARK_BLOCK_PREFIX_SUM
-//#define BENCHMARK_GPU_PREFIX_SUM
-//#define BENCHMARK_LSD_BINARY_RADIX_SORT
-//#define BENCHMARK_TRANSPOSE
-//#define BENCHMARK_BUILD_HISTOGRAMS
-//#define BENCHMARK_GPU_LSD_RADIX_SORT
+#define BENCHMARK_CPU_LSD_RADIX_SORT
+#define BENCHMARK_BLOCK_PREFIX_SUM
+#define BENCHMARK_GPU_PREFIX_SUM
+#define BENCHMARK_LSD_BINARY_RADIX_SORT
+#define BENCHMARK_TRANSPOSE
+#define BENCHMARK_BUILD_HISTOGRAMS
+#define BENCHMARK_GPU_LSD_RADIX_SORT
 
 #define PRINT_TIMINGS
 
@@ -1030,10 +1033,10 @@ void TestGPULSDRadixSort(int count, int block, int r, uint32_t min, uint32_t max
 constexpr int elems_count = 1;
 int elems[elems_count] =
 {
-	//1024 * 1024 * 32,
+	1024 * 1024 * 32,
 	//1024 * 1024 * 64,
 	//1024 * 1024 * 128,
-	1024 * 1024 * 256,
+	//1024 * 1024 * 256,
 	//1024 * 1024 * 512,
 	//1024 * 1024 * 1024,
 };

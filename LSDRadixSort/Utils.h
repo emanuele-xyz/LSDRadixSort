@@ -6,7 +6,11 @@
 #ifdef NDEBUG
 #define MYCRASH() (*((int*)(0)) = 0)
 #else
+#if defined(_MSC_VER)
 #define MYCRASH() __debugbreak()
+#else
+#define MYCRASH() (*((int*)(0)) = 0)
+#endif
 #endif
 #define MYASSERT(p) do { if (!(p)) MYCRASH(); } while (0)
 
